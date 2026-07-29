@@ -1,0 +1,28 @@
+name: Supabase Keep-Alive
+
+# Runs every 3 days, well under Supabase's 7-day free-tier pause threshold —
+# so even if a run or two gets skipped (GitHub occasionally delays scheduled
+# runs by a few minutes to hours, especially on the free tier), there's
+# comfortable margin before any real risk of the project pausing.
+#
+# "workflow_dispatch" below also lets you trigger it manually anytime from
+# the GitHub Actions tab, e.g. to test that it's working right now rather
+# than waiting for the next scheduled run.
+on:
+  schedule:
+    - cron: '0 6 */3 * *' # 06:00 UTC, every 3rd day
+  workflow_dispatch: {}
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install @supabase/supabase-js
+      - run: node scripts/keep-alive.js
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
