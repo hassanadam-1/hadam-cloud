@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hadam Marketplace — global digital store & multi-tenant marketplace platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  .hero{padding:56px 0 36px;text-align:center;max-width:640px;margin:0 auto;}
+  .hero h1{font-family:var(--font-display);font-size:34px;margin:10px 0;}
+  .hero p{color:var(--text-dim);font-size:15px;line-height:1.6;}
+  .eyebrow{font-family:var(--font-mono);font-size:12px;color:var(--accent-2);text-transform:uppercase;letter-spacing:.1em;}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:920px;margin:0 auto;}
+  @media (max-width:760px){.split{grid-template-columns:1fr;}}
+  .home-links{display:flex;gap:12px;justify-content:center;margin-top:18px;flex-wrap:wrap;}
+  .store-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:10px;}
+  .store-card h4{margin:0 0 4px;font-family:var(--font-display);font-size:15px;}
+  .store-card .tagline{color:var(--text-dim);font-size:13px;margin:0 0 8px;}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a href="#" class="logo" onclick="go('home');return false;">HADAM MARKETPLACE <span class="dot">●</span></a>
+    <nav class="main-nav" id="mainNav">
+      <a href="#" id="navHome" data-view="home" onclick="go('home');return false;" data-i18n="home">Home</a>
+      <a href="#" id="navMarket" data-view="marketplace" onclick="go('marketplace');return false;" data-i18n="marketplaceStores">Marketplace &amp; Stores</a>
+      <a href="#" id="navSell" data-view="sell" onclick="go('sell');return false;" data-i18n="sellOnHadam">Sell on Hadam</a>
+      <a href="#" id="navContact" data-view="contact" onclick="go('contact');return false;" data-i18n="contact">Contact</a>
+    </nav>
+    <div class="topbar-actions">
+      <select id="langSelect" class="btn ghost sm" onchange="setLang(this.value)" style="cursor:pointer;">
+        <option value="en">English</option>
+        <option value="ar">العربية</option>
+        <option value="fr">Français</option>
+      </select>
+      <button class="btn secondary sm" id="authBtn" onclick="onAuthBtn()" title="Hadam platform staff only" data-i18n="superadminLogin">Superadmin log in</button>
+    </div>
+  </div>
+</header>
+<main>
+  <section class="view active" id="view-home">
+    <div class="hero">
+      <div class="eyebrow" data-i18n="heroEyebrow">Cloud commerce infrastructure</div>
+      <h1 data-i18n="heroH1">Every store gets its own subdomain. We run the infrastructure.</h1>
+      <p data-i18n="heroP">Hadam is the platform — auth, catalog, cart, checkout, and fulfillment, shared by every tenant. Your store lives at <strong>yourname.hadam.com</strong> and starts with a blank catalog: you decide what you sell and how it's categorized.</p>
+      <div class="home-links">
+        <button class="btn" onclick="go('marketplace')" data-i18n="browseMarketplaceBtn">Browse the marketplace</button>
+        <button class="btn secondary" onclick="go('sell')" data-i18n="getOwnStoreBtn">Get your own store</button>
+      </div>
+    </div>
+    <div class="panel" style="max-width:640px;margin:0 auto;">
+      <h3 data-i18n="shopPanelH3">Looking to shop, or manage a store you already have?</h3>
+      <p style="color:var(--text-dim);font-size:13.5px;line-height:1.6;" data-i18n="shopPanelP">
+        This page (the Hadam homepage) is <strong>not</strong> where clients, employees, or store admins log in.
+        Every store has its own address and its own login — go to <strong>yourname.hadam.com</strong>
+        (or <code>yourname.localhost:3000</code> in local testing) and log in there.
+        The "Superadmin log in" button above is only for Hadam's own platform staff, who oversee the directory
+        of stores below — it has no access to any store's products, orders, or customers.
+      </p>
+    </div>
+  </section>
+
+  <section class="view" id="view-marketplace">
+    <h2 class="section-title" data-i18n="marketplaceStores">Marketplace &amp; Stores</h2>
+    <div class="filters" id="marketCatFilters"></div>
+    <div style="display:flex;gap:16px;align-items:center;margin-bottom:16px;">
+      <input type="text" id="marketSearch" data-i18n-placeholder="marketSearchPlaceholder" placeholder="Search products across every store…" oninput="onMarketSearch(this.value)"
+        style="flex:1;padding:9px 14px;border-radius:20px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13.5px;">
+    </div>
+    <div class="grid" id="marketGrid" style="margin-bottom:32px;"></div>
+
+    <h3 style="font-family:var(--font-display);font-size:18px;margin:0 0 12px;" data-i18n="sellerStoresH3">Seller stores</h3>
+    <div id="storesList"></div>
+    <div class="panel" style="margin-top:16px;text-align:center;">
+      <p style="color:var(--text-dim);font-size:13.5px;margin:0 0 10px;" data-i18n="wantOwnStoreP">Want your own store? Get a subdomain like <code>yourname.hadam.store</code>.</p>
+      <button class="btn" onclick="go('sell')" data-i18n="getOwnStoreBtn">Get your own store</button>
+    </div>
+  </section>
+
+  <section class="view" id="view-sell">
+    <h2 class="section-title" data-i18n="sellOnHadam">Sell on Hadam</h2>
+    <div class="split">
+      <div class="panel">
+        <h3 data-i18n="createStoreH3">Create your store</h3>
+        <div id="createMsg"></div>
+        <div class="field"><label data-i18n="subdomainLabel">Subdomain</label><input id="cSub" data-i18n-placeholder="subdomainPlaceholder" placeholder="yourstore"><div class="hint" id="subPreview" style="margin-top:2px"></div></div>
+        <div class="field"><label data-i18n="storeNameLabel">Store name</label><input id="cName" data-i18n-placeholder="storeNamePlaceholder" placeholder="Your Store Ltd"></div>
+        <div class="field"><label data-i18n="whatDoYouWantLabel">What do you want?</label>
+          <select id="cPlan">
+            <option value="store" data-i18n="planStoreOption">Just a store — sell anything, on your own subdomain, not listed on Hadam's Marketplace</option>
+            <option value="marketplace" data-i18n="planMarketOption">List on Hadam's Marketplace — reach shoppers browsing across every store</option>
+            <option value="both" selected data-i18n="planBothOption">Both — your own store, and listed on Hadam's Marketplace</option>
+          </select>
+          <div class="hint" data-i18n="planHint">This doesn't limit what you can sell — every plan can list physical products, digital downloads, or bookable services. It only decides whether your store also appears in Hadam's shared Marketplace &amp; Stores directory, alongside every other store.</div>
+        </div>
+        <div class="field"><label data-i18n="tierLabelForm">Subscription tier</label>
+          <select id="cTier" onchange="toggleSignupPayment()">
+            <option value="starter" selected>Starter — $0/month, 10 products, 15% commission</option>
+            <option value="professional">Professional — $29/month, 100 products, 8% commission</option>
+            <option value="enterprise">Enterprise — $99/month, unlimited products, 3% commission</option>
+          </select>
+          <div class="hint" data-i18n="tierHintForm">You can change this anytime later from Admin → Store Settings.</div>
+        </div>
+        <div id="signupPaymentFields" style="display:none;">
+          <div class="field"><label data-i18n="cardNumber">Card number</label><input id="cCardNum" placeholder="4111 1111 1111 1111" maxlength="19"></div>
+          <div class="row2">
+            <div class="field"><label data-i18n="expiry">Expiry</label><input id="cCardExp" placeholder="MM/YY"></div>
+            <div class="field"><label data-i18n="cvv">CVV</label><input id="cCardCvv" placeholder="123"></div>
+          </div>
+          <div class="hint" data-i18n="signupPaymentHint">Simulated payment. Use 4111 1111 1111 1111 for success or 0000 0000 0000 0000 to preview a decline.</div>
+        </div>
+        <div class="row2">
+          <div class="field"><label data-i18n="yourNameLabel">Your name</label><input id="cAdminName"></div>
+          <div class="field"><label data-i18n="email">Email</label><input id="cAdminEmail" type="email"></div>
+        </div>
+        <div class="field"><label data-i18n="password">Password</label><input id="cAdminPass" type="password" data-i18n-placeholder="passwordPlaceholder" placeholder="At least 6 characters"></div>
+        <button class="btn full" onclick="createTenant()" data-i18n="createStoreBtn">Create store</button>
+      </div>
+      <div class="panel">
+        <h3 data-i18n="howItWorksH3">How it works</h3>
+        <p style="color:var(--text-dim);font-size:13.5px;line-height:1.7;" data-i18n="howItWorksP">
+          1. Pick a subdomain and a plan — Store, Marketplace, or both.<br>
+          2. You become the store's Admin — add your own categories and products.<br>
+          3. Invite Employees (or additional Admins) to help fulfil orders and bookings.<br>
+          4. Clients register on your subdomain and shop only your catalog.<br><br>
+          Every store's data — users, catalog, orders — is fully isolated from every other store.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-contact">
+    <h2 class="section-title" data-i18n="contact">Contact</h2>
+    <div class="panel" style="max-width:480px;">
+      <div id="contactMsg"></div>
+      <div class="field"><label data-i18n="yourNameLabel">Name</label><input id="ctName"></div>
+      <div class="field"><label data-i18n="email">Email</label><input id="ctEmail" type="email"></div>
+      <div class="field"><label data-i18n="contactMessageLabel">Message</label><textarea id="ctMessage" rows="4" data-i18n-placeholder="contactMessagePlaceholder" placeholder="Question about a store, a listing, or the platform itself…"></textarea></div>
+      <button class="btn full" onclick="sendPlatformContact()" data-i18n="send">Send</button>
+      <div class="hint" data-i18n="contactHint">For an order, a return, or anything about a specific store's products — contact that store directly from its own site instead; this goes to the Hadam platform team.</div>
+    </div>
+  </section>
+
+  <section class="view" id="view-result"><div id="resultContent"></div></section>
+  <section class="view" id="view-super"><div id="superContent"></div></section>
+</main>
+<footer data-i18n="footerText">Hadam — multi-tenant commerce infrastructure. This environment is a demo/reference build.</footer>
+
+<div class="modal-overlay" id="authOverlay">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('authOverlay')">✕</button>
+    <div id="authModalContent"></div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

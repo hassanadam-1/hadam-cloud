@@ -1,0 +1,67 @@
+{
+  "tenants": [
+    {
+      "id": "t-demo",
+      "subdomain": "demo",
+      "name": "Hadam Store",
+      "status": "active",
+      "createdAt": 1737000000000,
+      "plan": "both",
+      "tagline": "Your trusted online shop for everything — physical products, digital downloads, and services, all in one place.",
+      "description": "The original Hadam demo store, showing physical goods, digital downloads, and bookable services side by side.",
+      "translations": {
+        "ar": {
+          "name": "متجر هدام",
+          "tagline": "متجرك الموثوق للتسوق عبر الإنترنت — منتجات مادية، تنزيلات رقمية، وخدمات، كل ذلك في مكان واحد.",
+          "aboutText": "🛒 منتجات مادية — إلكترونيات، ملابس، تجميل، أدوات منزلية، بقالة، وغيرها\n💻 منتجات رقمية — برمجيات، دورات، كتب إلكترونية، قوالب، وتنزيلات\n🔧 خدمات — خدمات مستقلة، استشارات، حجوزات، واشتراكات\n🏪 متاجر بائعين — أعمال أخرى موثوقة تبيع بجانبنا"
+        }
+      },
+      "aboutText": "🛒 Physical products — electronics, clothing, beauty, home items, groceries, and more\n💻 Digital products — software, courses, ebooks, templates, and downloads\n🔧 Services — freelance services, consulting, bookings, and subscriptions\n🏪 Seller shops — other trusted businesses selling alongside us",
+      "subscriptionTier": "professional"
+    }
+  ],
+  "users": [
+    {
+      "id": "u-super",
+      "name": "Hadam Platform Admin",
+      "email": "super@hadam.com",
+      "passwordHash": "__HASH_super123__",
+      "role": "superadmin",
+      "tenantId": null,
+      "createdAt": 1737000000000
+    },
+    {
+      "id": "u-admin",
+      "name": "Store Admin",
+      "email": "admin@hadamstore.com",
+      "passwordHash": "__HASH_admin123__",
+      "role": "admin",
+      "tenantId": "t-demo",
+      "createdAt": 1737000000000
+    },
+    {
+      "id": "u-emp1",
+      "name": "Sam Employee",
+      "email": "employee@hadamstore.com",
+      "passwordHash": "__HASH_employee123__",
+      "role": "employee",
+      "tenantId": "t-demo",
+      "createdAt": 1737000000000
+    },
+    {
+      "id": "u-client1",
+      "name": "Demo Client",
+      "email": "client@hadamstore.com",
+      "passwordHash": "__HASH_client123__",
+      "role": "client",
+      "tenantId": "t-demo",
+      "createdAt": 1737000000000
+    }
+  ],
+  "categories": [],
+  "products": [],
+  "orders": [],
+  "resets": [],
+  "messages": [],
+  "platformMessages": []
+}

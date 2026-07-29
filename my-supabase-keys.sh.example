@@ -1,0 +1,13 @@
+#!/bin/bash
+# Copy this file to my-supabase-keys.sh (remove the .example) and fill in
+# your real values there. my-supabase-keys.sh is NEVER shipped in updates,
+# so your real keys survive every future zip download — only this
+# .example template gets replaced.
+#
+#   cp my-supabase-keys.sh.example my-supabase-keys.sh
+#   (then edit my-supabase-keys.sh with your real values)
+
+export HADAM_AUTH_DRIVER=supabase
+export SUPABASE_URL="https://your-project-ref.supabase.co"
+export SUPABASE_ANON_KEY="paste-your-real-publishable-key-here"
+export SUPABASE_SERVICE_ROLE_KEY="paste-your-real-secret-key-here"

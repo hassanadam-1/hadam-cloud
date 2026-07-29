@@ -1,0 +1,14 @@
+{
+  "name": "hadam-store-cloud",
+  "version": "1.0.0",
+  "description": "Hadam Store + Marketplace API — role-based (admin/employee/client), category-driven fulfillment (shipping/download/booking/manual).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/run.js"
+  },
+  "engines": { "node": ">=16" },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}
