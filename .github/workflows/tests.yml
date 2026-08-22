@@ -1,0 +1,24 @@
+name: Tests
+
+# The deterministic suite (npm test) — runs on every PR and push,
+# including from forks, since it needs no secrets at all. Kept
+# deliberately separate from the real-email integration workflow
+# (see email-integration.yml), which does need secrets and is
+# restricted to push-to-main and manual runs only — a fork PR could
+# otherwise trigger real Resend sends and real Mailosaur inbox checks
+# just by opening a PR, which is both a cost and a secrets-exposure
+# concern.
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npm test

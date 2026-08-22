@@ -25,7 +25,7 @@
       "id": "u-super",
       "name": "Hadam Platform Admin",
       "email": "super@hadam.com",
-      "passwordHash": "c28fa10f177e08dfc082c7dfce08ffa9:ca38029c978f0b72525e44f146f7c82db20568027dd018a378ec91404d9a27bddc2a98de0ba58680e301ba07da5c2dbc3451429116771bbd2cad00edbd493ff7",
+      "passwordHash": "96f4892ad2d4f05cea39934ef23cbfca:6d3f026f8f9689e657f3930038c40d836b4811a59bca0b998ea4f0b4a93b861498464a610f14c0ba6298486448cdf683042ebabeae4c5eb1cdfbe89c83b93bc7",
       "role": "superadmin",
       "tenantId": null,
       "createdAt": 1737000000000
@@ -34,7 +34,7 @@
       "id": "u-admin",
       "name": "Store Admin",
       "email": "admin@hadamstore.com",
-      "passwordHash": "6bdb465fa0348e3c6ad33222846c7cb5:d284e1f5bbbed84e766d4f4f69b1d314446390ebb23be6101a365a93cf1e74b9007ca0b5cb17b2f604d9aecd82104b941ee265b9b8ba3618951714a265c8548c",
+      "passwordHash": "be7f84e7a5910bef0b9dc307e32514cc:3bf3d6a987b74ca2094d0a16afb8f7624abd7fc202de926a56f589a32ce6eda55bcae0939ea1a391ff23e55a2df81556fddac75d68995ea0649b84ce66264f44",
       "role": "admin",
       "tenantId": "t-demo",
       "createdAt": 1737000000000
@@ -43,7 +43,7 @@
       "id": "u-emp1",
       "name": "Sam Employee",
       "email": "employee@hadamstore.com",
-      "passwordHash": "0ddacae81d1234279534ccc5be632758:cf3f4142ecc43cd323c6e1e298014f1ff8906e71525af0da88735546c8233504767b916c6aaad00f03b46c59353c0788a9dff02126a35473aa5acccfe224d252",
+      "passwordHash": "7549404141811272aecb98e2741fc114:6452623fffa21f3e00e22a12c9e2d50d3f4fbdef2dbabf164071341c6114aa0178212566daab4433e3c2a9c7f94195b3032e3df9928ef01ff0f7d424e25338c9",
       "role": "employee",
       "tenantId": "t-demo",
       "createdAt": 1737000000000
@@ -52,7 +52,7 @@
       "id": "u-client1",
       "name": "Demo Client",
       "email": "client@hadamstore.com",
-      "passwordHash": "5071cc14e4144c12632383d1f2efa011:d0694d11fa6ba24ed23c132d452bcd0604705eae4cd397df17204cc2cc2f0ccb99c4c8370a0e506076d0f04d4145038855c456cd7466b3398cd48e9a46168673",
+      "passwordHash": "08f944ea38e895e3472ba28bc8d9482a:bf99eceee20f628a9315969acb577a8d454e7cab2e8cf8981cc73247b09df50b9e8239377a212596656b935e71de9e41db5666f5378fc5c28be6c1656f3afca6",
       "role": "client",
       "tenantId": "t-demo",
       "createdAt": 1737000000000

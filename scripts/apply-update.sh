@@ -299,15 +299,15 @@ robust_remove() {
 # Step 2 — apply the update, whole top-level items at a time.
 # ---------------------------------------------------------------------
 FAILED_ITEMS=()
-TOTAL=$(find "$SRC_DIR" -mindepth 1 -maxdepth 1 ! -name '.git' ! -name '.github' | wc -l | tr -d ' ')
+TOTAL=$(find "$SRC_DIR" -mindepth 1 -maxdepth 1 ! -name '.git' | wc -l | tr -d ' ')
 DONE=0
 echo "Applying update: $TOTAL top-level item(s) to process..."
 echo ""
 
+shopt -s dotglob # so the glob below actually matches hidden directories like .github — without this, .github was silently skipped even after removing the explicit exclusion check, since bash globs don't match dotfiles by default
 for item in "$SRC_DIR"/*; do
   name="$(basename "$item")"
   [ "$name" = ".git" ] && continue
-  [ "$name" = ".github" ] && continue
   dest="$DEST_DIR/$name"
   DONE=$((DONE + 1))
   echo "[$DONE/$TOTAL] $name"

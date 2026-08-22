@@ -1,0 +1,62 @@
+name: Email Integration (Resend, sandbox mode)
+
+# Runs the REAL email-delivery test (npm run test:email:resend) against
+# the real Resend API. Currently in SANDBOX MODE: using Resend's
+# onboarding@resend.dev sender (no verified domain yet), which can only
+# deliver to the Resend account's own signup email — not to an
+# arbitrary Mailosaur address. Steps 1-8 (submission, database,
+# notification, Arabic template) are still fully automated and asserted
+# by the script itself; only the final delivery confirmation prints a
+# checklist rather than polling an inbox automatically, since Resend's
+# own sandbox restriction makes that impossible right now regardless of
+# what this workflow does.
+#
+# TO SWITCH TO FULLY-AUTOMATED MODE once a real domain is verified in
+# Resend: replace the SANDBOX_TEST_RECIPIENT secret below with
+# MAILOSAUR_API_KEY and MAILOSAUR_SERVER_ID (both already supported by
+# scripts/test-email-resend.js — no code change needed, just swap which
+# secrets this workflow passes through), and update FROM_EMAIL to an
+# address on the verified domain. Also rename this workflow file's
+# `name:` back to mention Mailosaur, for clarity in the Actions tab.
+#
+# Deliberately NOT triggered on pull_request: GitHub does not expose
+# repository/environment secrets to workflows triggered by PRs from
+# forks, and even for same-repo PRs, sending a real external email on
+# every PR push would be unnecessary cost and noise for a check that
+# npm test's deterministic suite already covers locally (see
+# tests/api.test.js's own matrix test for the same notification, using
+# rendered-template assertions rather than a real inbox).
+#
+# Trigger policy, exactly as scoped:
+#   - push to main:       runs automatically (this is the real
+#                          deployment-adjacent signal that matters)
+#   - workflow_dispatch:  lets you run it on demand from the Actions
+#                          tab, e.g. to verify credentials or re-check
+#                          delivery without needing a new push
+#   - pull_request:       never
+#
+# Secrets live in the "email-integration" GitHub Environment, not as
+# plain repository secrets — this lets you require manual approval
+# before a run can access them (Settings -> Environments ->
+# email-integration -> "Required reviewers"), and keeps them scoped to
+# only the one job that legitimately needs them.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  email-integration:
+    runs-on: ubuntu-latest
+    environment: email-integration
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npm run test:email:resend
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+          SANDBOX_TEST_RECIPIENT: ${{ secrets.SANDBOX_TEST_RECIPIENT }}
