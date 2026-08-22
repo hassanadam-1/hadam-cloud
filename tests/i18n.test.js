@@ -44,6 +44,19 @@ module.exports = async function runI18nTests() {
       assert.strictEqual(missingAr.length, 0, `Missing Arabic translations for: ${missingAr.join(', ')}`);
       assert.strictEqual(missingFr.length, 0, `Missing French translations for: ${missingFr.join(', ')}`);
     });
+    await test('no t(\'key\') || \'fallback\' pattern references a key that is missing from I18N entirely (a different bug class than missing ar/fr — the key never existed at all, so it silently renders English in every language, invisible to the checks above)', async () => {
+      for (const relPath of ['public/app.js', 'public-platform/app.js']) {
+        const fullPath = path.join(__dirname, '..', relPath);
+        const code = fs.readFileSync(fullPath, 'utf8');
+        const I18N = extractI18N(fullPath);
+        const fallbackPattern = /t\('([a-zA-Z]+)'\)\s*\|\|\s*'[^']+'/g;
+        const referencedKeys = new Set();
+        let m;
+        while ((m = fallbackPattern.exec(code))) referencedKeys.add(m[1]);
+        const missing = [...referencedKeys].filter(k => !(k in I18N.en));
+        assert.strictEqual(missing.length, 0, `${relPath}: these keys are referenced with a fallback but don't exist in I18N.en at all (English-only in every language): ${missing.join(', ')}`);
+      }
+    });
     await test('no translation value is suspiciously identical to a different English key (copy-paste guard)', async () => {
       // Weak heuristic, not a hard failure elsewhere: flags if an entire dictionary
       // is empty, which would otherwise pass the "no missing keys" checks above

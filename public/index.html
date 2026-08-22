@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Hadam Store &amp; Marketplace</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/assets/logo/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#f5a623">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
@@ -11,8 +15,20 @@
 <body>
 <header class="topbar">
   <div class="topbar-inner">
-    <a href="#" class="logo" id="storeLogo" onclick="go('welcome');return false;">HADAM <span class="dot">●</span></a>
+    <a href="#" class="logo" id="storeLogo" onclick="go('welcome');return false;" style="display:flex;align-items:center;gap:8px;"><img src="/assets/logo/hadam-icon-light.svg" alt="" style="width:30px;height:30px;flex-shrink:0;" aria-hidden="true"><span id="storeLogoText">HADAM <span class="dot">●</span></span></a>
     <nav class="main-nav" id="mainNav"></nav>
+    <a href="#" id="staticHelpLink" target="_blank" rel="noopener" style="font-size:14px;font-weight:500;color:var(--text-dim);padding:7px 12px;border-radius:8px;">Help</a>
+    <script>
+      // Deliberately simple and self-contained — independent of app.js's
+      // boot() sequence, so this link works even if that sequence has
+      // trouble for any reason. Sets the href to the platform site's Help
+      // page based on the current subdomain, with no other dependencies.
+      (function () {
+        var parts = window.location.host.split('.');
+        var platformHost = parts.length > 1 ? parts.slice(1).join('.') : parts[0];
+        document.getElementById('staticHelpLink').href = window.location.protocol + '//' + platformHost + '#help';
+      })();
+    </script>
     <div class="topbar-actions">
       <select id="langSelect" class="btn ghost sm" onchange="setLang(this.value)" style="cursor:pointer;">
         <option value="en">English</option>
@@ -50,7 +66,7 @@
   <section class="view" id="view-sell"><div id="sellContent"></div></section>
 </main>
 
-<footer id="storeFooter">Powered by Hadam — the global digital store and multi-tenant marketplace platform. © 2026 Hadam. All rights reserved. Payments on this platform are simulated for demonstration; no real transactions occur.</footer>
+<footer id="storeFooter" style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;"><img src="/assets/logo/hadam-icon-light.svg" alt="" style="width:26px;height:26px;flex-shrink:0;" aria-hidden="true"><span id="storeFooterText">Powered by Hadam — the global digital store and multi-tenant marketplace platform. © 2026 Hadam. All rights reserved.</span></footer>
 
 <div class="modal-overlay" id="authOverlay">
   <div class="modal-box">
@@ -73,6 +89,9 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tus-js-client@4/dist/tus.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

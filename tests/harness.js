@@ -54,12 +54,14 @@ function request(port, hostHeader, urlPath, { method = 'GET', headers = {}, body
       hostname: 'localhost', port, path: urlPath, method,
       headers: { Host: hostHeader, 'Content-Type': 'application/json', 'X-Forwarded-For': currentTestIp, ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}), ...headers },
     }, res => {
-      let data = '';
-      res.on('data', c => data += c);
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
       res.on('end', () => {
+        const buf = Buffer.concat(chunks);
         const ct = res.headers['content-type'] || '';
-        let parsed = data;
-        if (ct.includes('application/json')) { try { parsed = JSON.parse(data); } catch { parsed = data; } }
+        let parsed = buf;
+        if (ct.includes('application/json')) { try { parsed = JSON.parse(buf.toString('utf8')); } catch { parsed = buf.toString('utf8'); } }
+        else if (ct.startsWith('text/') || ct.includes('charset')) { parsed = buf.toString('utf8'); }
         resolve({ status: res.statusCode, body: parsed, headers: res.headers });
       });
     });

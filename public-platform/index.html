@@ -4,12 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Hadam Marketplace — global digital store & multi-tenant marketplace platform</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/assets/logo/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#f5a623">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
 <style>
   .hero{padding:56px 0 36px;text-align:center;max-width:640px;margin:0 auto;}
   .hero h1{font-family:var(--font-display);font-size:34px;margin:10px 0;}
+  html[lang="ar"] .hero h1{font-size:27px;}
   .hero p{color:var(--text-dim);font-size:15px;line-height:1.6;}
   .eyebrow{font-family:var(--font-mono);font-size:12px;color:var(--accent-2);text-transform:uppercase;letter-spacing:.1em;}
   .split{display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:920px;margin:0 auto;}
@@ -23,12 +28,13 @@
 <body>
 <header class="topbar">
   <div class="topbar-inner">
-    <a href="#" class="logo" onclick="go('home');return false;">HADAM MARKETPLACE <span class="dot">●</span></a>
+    <a href="#" class="logo" onclick="go('home');return false;" style="display:flex;align-items:center;gap:9px;"><img src="/assets/logo/hadam-icon-light.svg" alt="" style="width:40px;height:40px;" aria-hidden="true">HADAM MARKETPLACE <span class="dot">●</span></a>
     <nav class="main-nav" id="mainNav">
       <a href="#" id="navHome" data-view="home" onclick="go('home');return false;" data-i18n="home">Home</a>
       <a href="#" id="navMarket" data-view="marketplace" onclick="go('marketplace');return false;" data-i18n="marketplaceStores">Marketplace &amp; Stores</a>
       <a href="#" id="navSell" data-view="sell" onclick="go('sell');return false;" data-i18n="sellOnHadam">Sell on Hadam</a>
       <a href="#" id="navContact" data-view="contact" onclick="go('contact');return false;" data-i18n="contact">Contact</a>
+      <a href="#" id="navHelp" data-view="help" onclick="go('help');return false;" data-i18n="helpNavLabel">Help</a>
     </nav>
     <div class="topbar-actions">
       <select id="langSelect" class="btn ghost sm" onchange="setLang(this.value)" style="cursor:pointer;">
@@ -36,6 +42,7 @@
         <option value="ar">العربية</option>
         <option value="fr">Français</option>
       </select>
+      <a href="#" id="dashboardNavLink" onclick="go('super');return false;" style="display:none;font-weight:600;" data-i18n="dashboardNavLink">Dashboard</a>
       <button class="btn secondary sm" id="authBtn" onclick="onAuthBtn()" title="Hadam platform staff only" data-i18n="superadminLogin">Superadmin log in</button>
     </div>
   </div>
@@ -82,22 +89,29 @@
 
   <section class="view" id="view-sell">
     <h2 class="section-title" data-i18n="sellOnHadam">Sell on Hadam</h2>
-    <div class="split">
+    <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+      <button class="btn" id="sellModeStoreBtn" onclick="switchSellMode('store')" data-i18n="createStoreTabBtn">Create a Store</button>
+      <button class="btn secondary" id="sellModeMarketplaceBtn" onclick="switchSellMode('marketplace')" data-i18n="joinMarketplaceTabBtn">Join Hadam Marketplace</button>
+      <button class="btn secondary" id="sellModeAddMarketBtn" onclick="switchSellMode('addmarket')" data-i18n="addMarketplaceTabBtn">Add Marketplace to My Store</button>
+      <button class="btn secondary" id="sellModeRenewBtn" onclick="switchSellMode('renew')" data-i18n="renewTabBtn">Membership Extension / Renew</button>
+    </div>
+    <div class="hint" style="max-width:640px;margin-bottom:18px;" data-i18n="sellModeHint">Starting a brand-new business on Hadam? Create a Store. Already running your own business elsewhere and just want visibility in Hadam's Marketplace? Join the Marketplace instead — no Hadam store or subdomain required.</div>
+    <div id="createStorePanel" class="split">
       <div class="panel">
         <h3 data-i18n="createStoreH3">Create your store</h3>
         <div id="createMsg"></div>
         <div class="field"><label data-i18n="subdomainLabel">Subdomain</label><input id="cSub" data-i18n-placeholder="subdomainPlaceholder" placeholder="yourstore"><div class="hint" id="subPreview" style="margin-top:2px"></div></div>
         <div class="field"><label data-i18n="storeNameLabel">Store name</label><input id="cName" data-i18n-placeholder="storeNamePlaceholder" placeholder="Your Store Ltd"></div>
         <div class="field"><label data-i18n="whatDoYouWantLabel">What do you want?</label>
-          <select id="cPlan">
-            <option value="store" data-i18n="planStoreOption">Just a store — sell anything, on your own subdomain, not listed on Hadam's Marketplace</option>
-            <option value="marketplace" data-i18n="planMarketOption">List on Hadam's Marketplace — reach shoppers browsing across every store</option>
-            <option value="both" selected data-i18n="planBothOption">Both — your own store, and listed on Hadam's Marketplace</option>
+          <select id="cPlan" onchange="clearSellForm()">
+            <option value="store" selected data-i18n="planStoreOption">Just a store — sell anything, on your own subdomain, not listed on Hadam's Marketplace</option>
+            <option value="marketplace" data-i18n="planMarketplaceOnlyOption">Marketplace only — your own store and subdomain, listed on Hadam's Marketplace</option>
+            <option value="both" data-i18n="planBothOption">Both — your own store, and listed on Hadam's Marketplace</option>
           </select>
-          <div class="hint" data-i18n="planHint">This doesn't limit what you can sell — every plan can list physical products, digital downloads, or bookable services. It only decides whether your store also appears in Hadam's shared Marketplace &amp; Stores directory, alongside every other store.</div>
+          <div class="hint" data-i18n="planHintNoMarketOnly">Want Marketplace visibility only, without a Hadam store or subdomain? Use "Join Hadam Marketplace" above instead — this form is for people who want their own store.</div>
         </div>
         <div class="field"><label data-i18n="tierLabelForm">Subscription tier</label>
-          <select id="cTier" onchange="toggleSignupPayment()">
+          <select id="cTier" onchange="toggleSignupPayment();clearSellForm();">
             <option value="starter" selected>Starter — $0/month, 10 products, 15% commission</option>
             <option value="professional">Professional — $29/month, 100 products, 8% commission</option>
             <option value="enterprise">Enterprise — $99/month, unlimited products, 3% commission</option>
@@ -105,18 +119,19 @@
           <div class="hint" data-i18n="tierHintForm">You can change this anytime later from Admin → Store Settings.</div>
         </div>
         <div id="signupPaymentFields" style="display:none;">
-          <div class="field"><label data-i18n="cardNumber">Card number</label><input id="cCardNum" placeholder="4111 1111 1111 1111" maxlength="19"></div>
+          <div class="field"><label data-i18n="cardNumber">Card number</label><input id="cCardNum" dir="ltr" placeholder="4111 1111 1111 1111" maxlength="19" autocomplete="off"></div>
           <div class="row2">
-            <div class="field"><label data-i18n="expiry">Expiry</label><input id="cCardExp" placeholder="MM/YY"></div>
-            <div class="field"><label data-i18n="cvv">CVV</label><input id="cCardCvv" placeholder="123"></div>
+            <div class="field"><label data-i18n="expiry">Expiry</label><input id="cCardExp" dir="ltr" placeholder="MM/YY" autocomplete="off"></div>
+            <div class="field"><label data-i18n="cvv">CVV</label><input id="cCardCvv" dir="ltr" placeholder="123" autocomplete="off"></div>
           </div>
+          <div class="field"><label data-i18n="cardholderNameLabel">Cardholder name</label><input id="cCardName" autocomplete="off"></div>
           <div class="hint" data-i18n="signupPaymentHint">Simulated payment. Use 4111 1111 1111 1111 for success or 0000 0000 0000 0000 to preview a decline.</div>
         </div>
         <div class="row2">
-          <div class="field"><label data-i18n="yourNameLabel">Your name</label><input id="cAdminName"></div>
-          <div class="field"><label data-i18n="email">Email</label><input id="cAdminEmail" type="email"></div>
+          <div class="field"><label data-i18n="yourNameLabel">Your name</label><input id="cAdminName" autocomplete="off"></div>
+          <div class="field"><label data-i18n="email">Email</label><input id="cAdminEmail" type="email" autocomplete="off"></div>
         </div>
-        <div class="field"><label data-i18n="password">Password</label><input id="cAdminPass" type="password" data-i18n-placeholder="passwordPlaceholder" placeholder="At least 6 characters"></div>
+        <div class="field"><label data-i18n="password">Password</label><input id="cAdminPass" type="password" data-i18n-placeholder="passwordPlaceholder" placeholder="At least 6 characters" autocomplete="new-password"></div>
         <button class="btn full" onclick="createTenant()" data-i18n="createStoreBtn">Create store</button>
       </div>
       <div class="panel">
@@ -127,6 +142,151 @@
           3. Invite Employees (or additional Admins) to help fulfil orders and bookings.<br>
           4. Clients register on your subdomain and shop only your catalog.<br><br>
           Every store's data — users, catalog, orders — is fully isolated from every other store.
+        </p>
+      </div>
+    </div>
+    <div id="joinMarketplacePanel" class="split" style="display:none;">
+      <div class="panel">
+        <h3 data-i18n="joinMarketplaceH3">Join Hadam Marketplace</h3>
+        <p class="hint" style="margin-bottom:14px;" data-i18n="joinMarketplaceIntro">List your existing business in Hadam's Marketplace for visibility — no Hadam store, subdomain, or account needed. Purchases are handled entirely on your own website.</p>
+        <div id="joinMarketplaceMsg"></div>
+        <div class="row2">
+          <div class="field"><label data-i18n="businessNameLabel">Business name</label><input id="jmBusinessName"></div>
+          <div class="field"><label data-i18n="ownerNameLabel">Owner name</label><input id="jmOwnerName"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label data-i18n="email">Email</label><input id="jmEmail" type="email"></div>
+          <div class="field"><label data-i18n="phoneLabel">Phone</label><input id="jmPhone" dir="ltr"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label data-i18n="countryLabel">Country</label><input id="jmCountry"></div>
+          <div class="field"><label data-i18n="cityLabel">City</label><input id="jmCity"></div>
+        </div>
+        <div class="field"><label data-i18n="addressLabel">Business address</label><input id="jmAddress"></div>
+        <div class="field"><label data-i18n="websiteUrlLabel">Website URL</label><input id="jmWebsiteUrl" placeholder="https://yourbusiness.example.com"></div>
+        <div class="field"><label data-i18n="businessCategoryLabel">Business category</label><input id="jmCategory" data-i18n-placeholder="businessCategoryPlaceholder" placeholder="e.g. Electronics, Fashion, Home Goods"></div>
+        <div class="field"><label data-i18n="businessDescriptionLabel">Business description</label><textarea id="jmDescription" rows="3"></textarea></div>
+        <div class="field"><label data-i18n="logoUrlLabel">Logo URL (optional)</label><input id="jmLogoUrl" placeholder="https://..."></div>
+        <div class="row2">
+          <div class="field"><label data-i18n="registrationNumberLabel">Business registration number (optional)</label><input id="jmRegistrationNumber"></div>
+          <div class="field"><label data-i18n="vatNumberLabel">VAT / Tax number (optional)</label><input id="jmVatNumber"></div>
+        </div>
+        <label style="font-weight:600;display:block;margin-top:6px;" data-i18n="socialLinksLabel">Social media links (all optional)</label>
+        <div class="row2">
+          <div class="field"><label>Facebook</label><input id="jmFacebook" placeholder="https://facebook.com/..."></div>
+          <div class="field"><label>Instagram</label><input id="jmInstagram" placeholder="https://instagram.com/..."></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>LinkedIn</label><input id="jmLinkedin" placeholder="https://linkedin.com/..."></div>
+          <div class="field"><label>X (Twitter)</label><input id="jmX" placeholder="https://x.com/..."></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>WhatsApp</label><input id="jmWhatsapp" placeholder="+1 555 123 4567"></div>
+          <div class="field"><label>YouTube</label><input id="jmYoutube" placeholder="https://youtube.com/..."></div>
+        </div>
+        <div class="field"><label data-i18n="marketplacePlanLabel">Marketplace plan</label>
+          <select id="jmPlan" onchange="document.getElementById('jmPaymentFields').style.display = this.value === 'featured' ? 'block' : 'none';">
+            <option value="free" selected data-i18n="jmPlanFreeOpt">Free listing — basic directory entry</option>
+            <option value="featured" data-i18n="jmPlanFeaturedOpt">Featured listing — $19/month, priority placement + promotions</option>
+          </select>
+        </div>
+        <div id="jmPaymentFields" style="display:none;">
+          <div class="field"><label data-i18n="cardNumber">Card number</label><input id="jmCardNum" dir="ltr" placeholder="4111 1111 1111 1111" maxlength="19" autocomplete="off"></div>
+          <div class="row2">
+            <div class="field"><label data-i18n="expiry">Expiry</label><input id="jmCardExp" dir="ltr" placeholder="MM/YY" autocomplete="off"></div>
+            <div class="field"><label data-i18n="cvv">CVV</label><input id="jmCardCvv" dir="ltr" placeholder="123" autocomplete="off"></div>
+          </div>
+          <div class="hint" data-i18n="signupPaymentHint">Simulated payment. Use 4111 1111 1111 1111 for success or 0000 0000 0000 0000 to preview a decline.</div>
+        </div>
+        <button class="btn full" onclick="joinMarketplace()" data-i18n="joinMarketplaceBtn">Join Hadam Marketplace</button>
+      </div>
+      <div class="panel">
+        <h3 data-i18n="howJoinWorksH3">How it works</h3>
+        <p style="color:var(--text-dim);font-size:13.5px;line-height:1.7;" data-i18n="howJoinWorksP">
+          1. Submit your business information — no Hadam store or subdomain is created.<br>
+          2. Your business appears in Hadam's Marketplace directory with your logo, description, and a link to your own website.<br>
+          3. Shoppers who find you through Hadam are directed to your own website to complete their purchase — Hadam does not process payments or orders for Marketplace-only members.<br>
+          4. You can upgrade to a full Hadam Store at any time — your business information carries over, and you'll gain a subdomain, catalog, cart, checkout, and every other Hadam Store feature.
+        </p>
+      </div>
+    </div>
+    <div id="addMarketPanel" class="split" style="display:none;">
+      <div class="panel">
+        <h3 data-i18n="addMarketplaceH3">Add Marketplace to My Existing Store</h3>
+        <p class="hint" style="margin-bottom:14px;" data-i18n="addMarketplaceIntro">For Hadam Store admins who already have a store and want to add Marketplace visibility to it — no new store or subdomain is created, this activates on your existing one.</p>
+        <div id="addMarketMsg"></div>
+        <div class="field"><label data-i18n="subdomainLabel">Subdomain</label><input id="amSub" data-i18n-placeholder="subdomainPlaceholder" placeholder="yourstore"></div>
+        <div class="field"><label data-i18n="email">Email</label><input id="amEmail" type="email" autocomplete="off"></div>
+        <div class="field"><label data-i18n="password">Password</label><input id="amPassword" type="password" autocomplete="off"></div>
+        <div class="field"><label data-i18n="cardNumber">Card number</label><input id="amCardNum" dir="ltr" placeholder="4111 1111 1111 1111" maxlength="19" autocomplete="off"></div>
+        <div class="row2">
+          <div class="field"><label data-i18n="expiry">Expiry</label><input id="amCardExp" dir="ltr" placeholder="MM/YY" autocomplete="off"></div>
+          <div class="field"><label data-i18n="cvv">CVV</label><input id="amCardCvv" dir="ltr" placeholder="123" autocomplete="off"></div>
+        </div>
+        <div class="field"><label data-i18n="cardholderNameLabel">Cardholder name</label><input id="amCardName" autocomplete="off"></div>
+        <div class="hint" data-i18n="signupPaymentHint">Simulated payment. Use 4111 1111 1111 1111 for success or 0000 0000 0000 0000 to preview a decline.</div>
+        <button class="btn full" onclick="addMarketplaceToStore()" data-i18n="addMarketplaceBtn">Add Marketplace Access</button>
+      </div>
+      <div class="panel">
+        <h3 data-i18n="howAddMarketWorksH3">How it works</h3>
+        <p style="color:var(--text-dim);font-size:13.5px;line-height:1.7;" data-i18n="howAddMarketWorksP">
+          1. Enter your store's subdomain and your own admin login for that store.<br>
+          2. Confirm payment for Marketplace access.<br>
+          3. Your existing store — same subdomain, same catalog, same customers — is immediately listed in Hadam's shared Marketplace directory.<br><br>
+          No second store or subdomain is ever created. If your admin account has two-factor authentication enabled, use your store's own Admin panel instead of this page.
+        </p>
+      </div>
+    </div>
+    <div id="renewPanel" class="split" style="display:none;">
+      <div class="panel">
+        <h3 data-i18n="renewH3">Membership Extension / Renew</h3>
+        <p class="hint" style="margin-bottom:14px;" data-i18n="renewIntro">Extend or renew an existing Store or Marketplace subscription, before or after it expires.</p>
+        <div class="field"><label data-i18n="renewTypeLabel">What are you renewing?</label>
+          <select id="renewType" onchange="switchRenewType(this.value)">
+            <option value="store" data-i18n="renewTypeStoreOpt">Hadam Store Plan Renewal</option>
+            <option value="marketplace" data-i18n="renewTypeMarketOpt">Hadam Marketplace Membership Renewal</option>
+            <option value="both" data-i18n="renewTypeBothOpt">Hadam Store + Marketplace Package Renewal</option>
+          </select>
+        </div>
+        <div id="renewStoreFields">
+          <div class="field"><label data-i18n="subdomainLabel">Subdomain</label><input id="rnSub" data-i18n-placeholder="subdomainPlaceholder" placeholder="yourstore"></div>
+          <div class="field"><label data-i18n="email">Email</label><input id="rnEmail" type="email" autocomplete="off"></div>
+          <div class="field"><label data-i18n="password">Password</label><input id="rnPassword" type="password" autocomplete="off"></div>
+          <div class="field"><label data-i18n="tierLabelForm">Subscription tier</label>
+            <select id="rnTier" onchange="updateRenewPrice()">
+              <option value="professional">Professional — $29/month, 100 products, 8% commission</option>
+              <option value="enterprise">Enterprise — $99/month, unlimited products, 3% commission</option>
+            </select>
+          </div>
+          <button type="button" class="btn sm secondary" onclick="checkRenewStatus()" data-i18n="checkStatusBtn">Check current status</button>
+          <div id="renewStoreStatus" style="margin:10px 0;"></div>
+          <div class="hint" style="font-size:15px;font-weight:600;color:var(--text);" id="renewStorePrice"></div>
+        </div>
+        <div id="renewMarketFields" style="display:none;">
+          <div class="field"><label data-i18n="businessNameLabel">Business name</label><input id="rnBusinessName"></div>
+          <div class="field"><label data-i18n="email">Email</label><input id="rnMarketEmail" type="email" autocomplete="off"></div>
+          <button type="button" class="btn sm secondary" onclick="checkRenewStatus()" data-i18n="checkStatusBtn">Check current status</button>
+          <div id="renewMarketStatus" style="margin:10px 0;"></div>
+          <div class="hint" style="font-size:15px;font-weight:600;color:var(--text);" data-i18n="renewMarketPriceLabel">Featured Marketplace membership — $19/month</div>
+          <div class="hint" data-i18n="renewMarketFreeHint">Free-plan Marketplace listings have no expiry and nothing to renew — this renewal form applies to Featured memberships only.</div>
+        </div>
+        <div class="field"><label data-i18n="cardNumber">Card number</label><input id="rnCardNum" dir="ltr" placeholder="4111 1111 1111 1111" maxlength="19" autocomplete="off"></div>
+        <div class="row2">
+          <div class="field"><label data-i18n="expiry">Expiry</label><input id="rnCardExp" dir="ltr" placeholder="MM/YY" autocomplete="off"></div>
+          <div class="field"><label data-i18n="cvv">CVV</label><input id="rnCardCvv" dir="ltr" placeholder="123" autocomplete="off"></div>
+        </div>
+        <div class="field"><label data-i18n="cardholderNameLabel">Cardholder name</label><input id="rnCardName" autocomplete="off"></div>
+        <div class="hint" data-i18n="signupPaymentHint">Simulated payment. Use 4111 1111 1111 1111 for success or 0000 0000 0000 0000 to preview a decline.</div>
+        <div id="renewMsg"></div>
+        <button class="btn full" onclick="submitRenewal()" data-i18n="renewBtn">Renew</button>
+      </div>
+      <div class="panel">
+        <h3 data-i18n="howRenewWorksH3">How it works</h3>
+        <p style="color:var(--text-dim);font-size:13.5px;line-height:1.7;" data-i18n="howRenewWorksP">
+          1. Choose whether you're renewing a Hadam Store subscription or a Marketplace membership.<br>
+          2. Confirm your identity — your store's admin login, or the email and business name your Marketplace application was submitted with.<br>
+          3. Payment is verified before anything changes — selecting a plan alone never activates or extends a subscription.<br>
+          4. Once payment is confirmed, your expiration date is extended by 30 days, and access is restored immediately if it had lapsed.
         </p>
       </div>
     </div>
@@ -144,10 +304,16 @@
     </div>
   </section>
 
+  <section class="view" id="view-help">
+    <h2 class="section-title" data-i18n="helpPageTitle">Help</h2>
+    <p class="hint" style="max-width:640px;margin-bottom:16px;" data-i18n="helpPageIntro">Step-by-step guidance for using Hadam.</p>
+    <div id="helpPageContent"></div>
+  </section>
+
   <section class="view" id="view-result"><div id="resultContent"></div></section>
   <section class="view" id="view-super"><div id="superContent"></div></section>
 </main>
-<footer data-i18n="footerText">Hadam — multi-tenant commerce infrastructure. This environment is a demo/reference build.</footer>
+<footer style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;"><img src="/assets/logo/hadam-icon-light.svg" alt="" style="width:26px;height:26px;flex-shrink:0;" aria-hidden="true"><span data-i18n="footerText">Hadam — multi-tenant commerce infrastructure. This environment is a demo/reference build.</span></footer>
 
 <div class="modal-overlay" id="authOverlay">
   <div class="modal-box">
@@ -156,6 +322,7 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

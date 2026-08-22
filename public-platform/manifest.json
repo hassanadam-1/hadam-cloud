@@ -1,0 +1,13 @@
+{
+  "name": "Hadam — Digital Store & Marketplace Platform",
+  "short_name": "Hadam",
+  "description": "Every tenant, one cloud — multi-tenant digital storefront and marketplace platform.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#12141c",
+  "theme_color": "#f5a623",
+  "icons": [
+    { "src": "/assets/logo/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/assets/logo/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

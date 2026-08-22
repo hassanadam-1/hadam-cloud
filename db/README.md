@@ -12,6 +12,18 @@ directly (`apt-get install postgresql` and even `npm install pg` both
 returned 403 Forbidden here). Run this in your Supabase project's SQL
 Editor and check it there before relying on it.
 
+**Important for deployment: this file is only safe to run in full against
+a brand-new, empty Supabase project.** Most of the `create table`
+statements do not use `if not exists`, so re-running the whole file
+against a project that already has some or all of this schema applied
+will error out on the first table that already exists. If your Supabase
+project already has this schema from an earlier session, only the newer
+additions near the end of the file are relevant — those specifically DO
+use `if not exists` / `add column if not exists` and are safe to re-run:
+the `user_lang_prefs` table and the `marketplace_members.lang` column.
+Check what your project already has (Table Editor, or `\dt` in SQL Editor)
+before deciding whether to run the whole file or just those two additions.
+
 ## The decision this schema is built around
 
 After weighing it directly: Hadam migrates to **Supabase Auth** as its

@@ -184,6 +184,36 @@ Simple per-store messaging: a client can send a message
 their own messages (`GET /api/support/messages/mine`). No threading or
 attachments — this is a straightforward inbox, not a full helpdesk.
 
+## Known product gap: store-owner ↔ superadmin two-way messaging does not exist
+
+This is easy to conflate with the Support/CRM inbox above, so it's worth
+being explicit: there is no dedicated channel for a store owner to reach
+the Hadam platform team and get a reply. What exists instead:
+
+- The storefront footer's "Contact Us" link goes to the same public,
+  anonymous `POST /api/platform/contact` form any website visitor uses —
+  it has no awareness that the sender is a store owner at all.
+- The `platform_messages` table has **no `tenantId` column**, so even if
+  a store owner submits through it, the system cannot associate that
+  message with their store.
+- Superadmins *are* notified by email when a message arrives
+  (`notifySuperadminsOfContactMessage`, localized in EN/AR/FR) — but
+  there is **no reply mechanism**: no reply field on the record, no
+  `PATCH` endpoint, nothing. Confirmed by direct trace: only `POST`
+  (submit) and `GET` (list) exist for `/api/platform/contact`.
+- Because no reply exists, there is no way for a store owner to see a
+  response, and no threading or conversation history of any kind.
+
+This is a genuinely unimplemented feature, not a defect in the existing
+Contact form — the Contact form does exactly what it was built to do
+(collect anonymous inbound messages for superadmins to read). If this
+capability is wanted, it should be scoped and built as its own proper
+conversation system — a support conversation associated with `tenantId`,
+a superadmin inbox, two-way replies, store-owner notifications on reply,
+and a conversation view — rather than bolted onto `platform_messages` as
+a single reply column. That design gives a clean foundation for future
+unread status, timestamps, and attachments if ever needed. Not started.
+
 ## Staff account creation
 
 Employees and additional Admins are created **by an existing Admin**,
@@ -214,6 +244,44 @@ Run everything with:
 ```bash
 node tests/run.js
 ```
+
+### A separate, opt-in tier: real Resend delivery
+
+Everything above is fully deterministic — no network calls to external
+services, no real credentials, safe to run constantly during
+development. It cannot, by design, prove that an email actually reaches
+a real inbox through Resend.
+
+For that, there's a second, explicitly separate script:
+
+```bash
+npm run test:email:resend
+```
+
+This exercises the complete chain — Store Contact submission →
+notification → localized template → the real Resend API → a real,
+controlled test mailbox (Mailosaur by default; swap the `mailosaur`
+helper near the top of `scripts/test-email-resend.js` for a different
+provider if you use one) — and only runs if `RESEND_API_KEY`,
+`FROM_EMAIL`, `MAILOSAUR_API_KEY`, and `MAILOSAUR_SERVER_ID` are all
+set. With none of them set, it prints what's missing and exits cleanly
+(exit code 0) rather than failing — an unconfigured environment isn't a
+test failure, it's just not applicable there. This is deliberately
+**not** part of `npm test` — it depends on external infrastructure and
+real secrets, which would make the everyday suite flaky and secret-
+dependent for no benefit to normal development.
+
+Genuinely verified during development, not just written and assumed:
+with dummy (invalid) credentials supplied, every step through creating
+the store, submitting the Contact form, confirming the `support_messages`
+record, confirming exactly one `contact_message_received` notification,
+and confirming it rendered in Arabic — all ran for real and passed. The
+script also made a real HTTPS call to Resend's actual API and correctly
+handled the real HTTP 403 response from the invalid key. The one part
+that could not be verified this way is delivery into an actual Mailosaur
+mailbox, since that requires genuinely valid credentials this project
+was never given. Treat the first real run with real credentials as the
+first true test of this script, not only of the feature it exercises.
 
 **85/85 passing** as of this build (16 of those cover this round's
 additions: subscription plans, cross-store discovery, password reset, and

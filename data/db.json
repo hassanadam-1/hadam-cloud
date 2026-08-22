@@ -1,7 +1,7 @@
 {
   "tenants": [
     {
-      "id": "7c70f2ed-5e9a-4ac1-8ebd-1a6e002243c4",
+      "id": "t-demo",
       "subdomain": "demo",
       "name": "Hadam Store",
       "status": "active",
@@ -17,9 +17,7 @@
         }
       },
       "aboutText": "🛒 Physical products — electronics, clothing, beauty, home items, groceries, and more\n💻 Digital products — software, courses, ebooks, templates, and downloads\n🔧 Services — freelance services, consulting, bookings, and subscriptions\n🏪 Seller shops — other trusted businesses selling alongside us",
-      "subscriptionTier": "professional",
-      "subscriptionExpiresAt": 1787771775126,
-      "lastAlertLevel": "1_month"
+      "subscriptionTier": "professional"
     }
   ],
   "users": [
@@ -27,7 +25,7 @@
       "id": "u-super",
       "name": "Hadam Platform Admin",
       "email": "super@hadam.com",
-      "passwordHash": "a476f2e5412d99ae81b25c3c81b66daf:742e1100baf613b68279a562292e79e04d86c2184b534582f6c60b1762f3736f491fd08b3e524687f483058db3a5e00debd5a9768efd336e960e6d35ac11a71b",
+      "passwordHash": "c28fa10f177e08dfc082c7dfce08ffa9:ca38029c978f0b72525e44f146f7c82db20568027dd018a378ec91404d9a27bddc2a98de0ba58680e301ba07da5c2dbc3451429116771bbd2cad00edbd493ff7",
       "role": "superadmin",
       "tenantId": null,
       "createdAt": 1737000000000
@@ -36,94 +34,34 @@
       "id": "u-admin",
       "name": "Store Admin",
       "email": "admin@hadamstore.com",
-      "passwordHash": "1e2f294cce0078464d66a5e2eff674ab:2dea343678bd2e89abbb0838aa161a1c7c9b89207e0972176879643ee6d21af39876d68abdbfa4dcf13e0d204c7db3f0e6a12139e65957df06e9fd69ec90be33",
+      "passwordHash": "6bdb465fa0348e3c6ad33222846c7cb5:d284e1f5bbbed84e766d4f4f69b1d314446390ebb23be6101a365a93cf1e74b9007ca0b5cb17b2f604d9aecd82104b941ee265b9b8ba3618951714a265c8548c",
       "role": "admin",
-      "tenantId": "7c70f2ed-5e9a-4ac1-8ebd-1a6e002243c4",
+      "tenantId": "t-demo",
       "createdAt": 1737000000000
     },
     {
       "id": "u-emp1",
       "name": "Sam Employee",
       "email": "employee@hadamstore.com",
-      "passwordHash": "148d8b3b1a652695ab040255bf067628:7fb3cc67b2befc3b9b6049e799eee0cc75eb6cf0bbf26e8f96ff639694b4c3cefd027210a3fc535d3c43f5a45ba1dbc31d9c6e15727bb3f33b682e129bc8a827",
+      "passwordHash": "0ddacae81d1234279534ccc5be632758:cf3f4142ecc43cd323c6e1e298014f1ff8906e71525af0da88735546c8233504767b916c6aaad00f03b46c59353c0788a9dff02126a35473aa5acccfe224d252",
       "role": "employee",
-      "tenantId": "7c70f2ed-5e9a-4ac1-8ebd-1a6e002243c4",
+      "tenantId": "t-demo",
       "createdAt": 1737000000000
     },
     {
       "id": "u-client1",
       "name": "Demo Client",
       "email": "client@hadamstore.com",
-      "passwordHash": "7e5d5bd38e52ec132635ac6e3c42f513:be8066eba1482a82d684e8b0eb43f0d51fb5ba630e613a89dac2e164171c06e26ff0d04302e5c58d757664f107fba8a0bc7a08165a5d58dad9c7420441905bd9",
+      "passwordHash": "5071cc14e4144c12632383d1f2efa011:d0694d11fa6ba24ed23c132d452bcd0604705eae4cd397df17204cc2cc2f0ccb99c4c8370a0e506076d0f04d4145038855c456cd7466b3398cd48e9a46168673",
       "role": "client",
-      "tenantId": "7c70f2ed-5e9a-4ac1-8ebd-1a6e002243c4",
+      "tenantId": "t-demo",
       "createdAt": 1737000000000
-    },
-    {
-      "id": "u-fc731dc4-c390-4f2e-a01d-16d5d4794049",
-      "name": "Test Client",
-      "email": "hadam-test-server@mailinator.com",
-      "passwordHash": "d2ba5122cd83aac60a6d6d653cf85658:ce6d188898f64557bb69925adf202b1dd409296b9356b8b77ca0e371eaecb4f01b93c7cdc4dbc531a7932512d98eafe0fcbf55c70d3977303917142eee35a820",
-      "role": "client",
-      "tenantId": "7c70f2ed-5e9a-4ac1-8ebd-1a6e002243c4",
-      "createdAt": 1785179863754
-    },
-    {
-      "id": "u-30488fda-968a-4be7-bb32-f0cd3f60ffe0",
-      "name": "Test Client",
-      "email": "hadam-test-server3@mailinator.com",
-      "passwordHash": "cc1715ba8a099ce07af89d5b78f80d52:f63839a8a92e341e7aaa3ed123c2a0b9b593b8de0f6db5fcf181f133f1617ee093d27d158c5b54e5e48a39dec997e7604e8e1562f3b42add6776f5416c161473",
-      "role": "client",
-      "tenantId": "7c70f2ed-5e9a-4ac1-8ebd-1a6e002243c4",
-      "createdAt": 1785227761316
-    },
-    {
-      "id": "u-80692a44-1712-44cb-a31c-fe3d85f46bea",
-      "name": "Test Client",
-      "email": "hadam-test-server4@mailinator.com",
-      "passwordHash": "25c8cff4e9af523c52f08674891dcc82:06b43810b61510dd720227e9667ef23be4e399937818624bfa28a1a1aba9db7248068e98ce3213b3253d3b682ea115efbc653936a3cef2e9a6238d2f6b296706",
-      "role": "client",
-      "tenantId": "7c70f2ed-5e9a-4ac1-8ebd-1a6e002243c4",
-      "createdAt": 1785229026820
-    },
-    {
-      "id": "u-3706269a-f15a-4b45-9fec-a3c811630adb",
-      "name": "Test Client",
-      "email": "hadam-test-server5@mailinator.com",
-      "passwordHash": "3bdc69f697a0d4f979f88b9f944c8468:e75b8a6d4bd059e9c4e64950f89bddb1bfaa8c36f08acf27303005169f9f7d634c2635010d93ba3d8c7ec293d2b52cc8e29c11fc027d7331679517290e6dc3f4",
-      "role": "client",
-      "tenantId": "7c70f2ed-5e9a-4ac1-8ebd-1a6e002243c4",
-      "createdAt": 1785229258187
     }
   ],
   "categories": [],
   "products": [],
   "orders": [],
   "resets": [],
-  "messages": [
-    {
-      "id": "msg-12df1673-de08-4dab-97e8-4eead7022290",
-      "tenantId": "7c70f2ed-5e9a-4ac1-8ebd-1a6e002243c4",
-      "clientId": "b87942df-215c-46ea-baaf-13b7d4751b54",
-      "clientName": "Test Client",
-      "clientEmail": "hadam-test-server12@mailinator.com",
-      "subject": "Test",
-      "message": "Testing support messages",
-      "reply": null,
-      "status": "open",
-      "createdAt": 1785316968288
-    }
-  ],
-  "platformMessages": [],
-  "notifications": [
-    {
-      "id": "note-4c98946b-cb7a-4687-9834-c62533fa3c95",
-      "tenantId": "t-demo",
-      "type": "renewal_reminder_1_month",
-      "to": "admin@hadamstore.com",
-      "subject": "Your Hadam subscription for \"Hadam Store\" expires in 1 month",
-      "body": "Hi Store Admin,\n\nYour store \"Hadam Store\" (plan: both) is set to expire in 1 month, on Wed Aug 26 2026.\n\nRenew anytime from Admin → Store Settings to keep your store (and Marketplace listing, if applicable) running without interruption.\n\n— Hadam Marketplace",
-      "sentAt": 1785185848760
-    }
-  ]
+  "messages": [],
+  "platformMessages": []
 }
