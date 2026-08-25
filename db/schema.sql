@@ -390,7 +390,7 @@ create table orders (
   id                uuid primary key default gen_random_uuid(),
   tenant_id         uuid not null references tenants (id) on delete cascade,
   client_id         uuid not null references auth.users (id) on delete restrict,
-  payment_status    text not null check (payment_status in ('success', 'failed')),
+  payment_status    text not null check (payment_status in ('success', 'failed', 'pending')),
   status            text not null default 'pending' check (status in ('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded')),
   shipping_address  text,
   total             numeric(10, 2) not null,

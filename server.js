@@ -2511,6 +2511,80 @@ route('PATCH', '/api/admin/stripe/enable', { hostScope: 'tenant', auth: true, ro
   send(res, 200, { enabled: record.enabled });
 });
 
+/**
+ * Step 3 — real Stripe test-mode checkout. Local-driver implementation
+ * (where the automated test suite runs); the Supabase-driver equivalent
+ * would follow the same shape. Deliberately scoped to shipping/manual
+ * fulfillment items for this first pass — download and booking
+ * fulfillment through Stripe are a known, explicitly stated gap, not
+ * silently unhandled.
+ *
+ * The critical rule this route embodies: the order and its payment are
+ * created as 'pending' and STAY pending — nothing here, and nothing the
+ * browser can claim afterward, ever marks them paid. Only the verified
+ * webhook (payment_intent.succeeded, handled below) does that. Stock is
+ * likewise NOT decremented here — it's deferred to the same webhook, so
+ * an order that never actually gets paid never touches inventory either.
+ */
+route('POST', '/api/orders/stripe', { hostScope: 'tenant', auth: true, roles: ['client', 'admin', 'employee'] }, async (req, res, params, body, query, user, tenant) => {
+  if (tenant.closedBySelf) return send(res, 403, { error: apiT('storeClosedNoOrders', reqLang(req)) });
+  if (tenant.subscriptionExpiresAt && tenant.subscriptionExpiresAt < Date.now()) return send(res, 403, { error: apiT('storeSubExpiredNoOrders', reqLang(req)) });
+
+  const record = getTenantPaymentMethod(tenant.id, 'stripe');
+  if (!record || !record.enabled || record.stripeOnboardingStatus !== 'connected') {
+    return send(res, 400, { error: 'Stripe is not available for this store.' });
+  }
+
+  const { items, shippingAddress, deliveryMethod } = body;
+  if (!Array.isArray(items) || items.length === 0) return send(res, 400, { error: apiT('cartEmpty', reqLang(req)) });
+
+  const resolved = [];
+  for (const line of items) {
+    const p = findProduct(line.productId, tenant.id);
+    if (!p) return send(res, 400, { error: `Unknown product: ${line.productId}` });
+    const qty = line.qty || 1;
+    const category = findCategory(p.categoryId, tenant.id);
+    if (!['shipping', 'manual'].includes(category.fulfillment)) {
+      return send(res, 400, { error: `"${p.name}" cannot currently be purchased with Stripe (download/booking items are not yet supported through Stripe checkout).` });
+    }
+    if (category.fulfillment === 'shipping' && typeof p.stock === 'number' && qty > p.stock) {
+      return send(res, 400, { error: `Only ${p.stock} unit(s) of "${p.name}" left in stock.` });
+    }
+    resolved.push({ product: p, category, qty });
+  }
+  const needsShipping = resolved.some(r => r.category.fulfillment === 'shipping');
+  if (needsShipping && (!shippingAddress || !shippingAddress.trim())) {
+    return send(res, 400, { error: apiT('shippingAddressRequired', reqLang(req)) });
+  }
+  const total = resolved.reduce((s, r) => s + r.product.price * r.qty, 0);
+  const now = Date.now();
+  const orderId = newId('ord');
+  const orderItems = resolved.map(r => ({
+    productId: r.product.id, name: r.product.name, sku: r.product.sku || null, translations: r.product.translations || {}, price: r.product.price, qty: r.qty,
+    categoryId: r.category.id, categoryName: r.category.name, fulfillment: r.category.fulfillment,
+    status: 'awaiting_payment', // distinct from the simulated flow's statuses — nothing has been fulfilled or stocked yet, since payment isn't confirmed
+    refundRequested: false, refundStatus: 'none', refundRequestReason: null, refundRequestedAt: null, refundDecisionBy: null, refundDecisionAt: null, refundDecisionReason: null, refundPaymentLast4: null,
+  }));
+  const order = { id: orderId, tenantId: tenant.id, clientId: user.id, clientName: user.name, clientEmail: user.email, items: orderItems, total, paymentStatus: 'pending', status: 'pending', shippingAddress: needsShipping ? shippingAddress : null, createdAt: now };
+  db.orders.push(order);
+  db.orderStatusHistory.push({ id: newId('osh'), tenantId: tenant.id, orderId, status: 'pending', changedBy: 'System', changedAt: now });
+
+  let payment;
+  try {
+    payment = await createPaymentRecord({ db, supabaseAdminClient: null, tenantId: tenant.id, orderId, clientId: user.id, method: 'stripe', status: 'pending', amount: total, currency: 'usd' });
+    const intent = await stripeConnectLib.createPaymentIntent({ stripe: stripeClient(), stripeAccountId: record.stripeAccountId, amount: total, currency: 'usd' });
+    // metadata.paymentId is how the webhook finds its way back to this
+    // exact payment record when Stripe later confirms (or fails) it.
+    await stripeClient().paymentIntents.update(intent.id, { metadata: { paymentId: payment.id } });
+    payment.providerReference = intent.id;
+    await persist();
+    send(res, 201, { orderId, clientSecret: intent.client_secret, publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null });
+  } catch (e) {
+    console.error('[stripe checkout] failed to create PaymentIntent:', e.message);
+    send(res, 500, { error: 'Could not start Stripe payment. Please try again.' });
+  }
+});
+
 /** The Stripe Connect webhook endpoint. Platform-level (hostScope: 'any') since Stripe calls one fixed URL regardless of which connected account an event is for — event.account in the verified payload, never anything host- or client-supplied, is what identifies the tenant. rawBody: true is essential here — see readRawBody's own comment for why. */
 route('POST', '/api/webhooks/stripe', { hostScope: 'any', rawBody: true }, async (req, res, params, body) => {
   const signature = req.headers['stripe-signature'];
@@ -2535,6 +2609,44 @@ route('POST', '/api/webhooks/stripe', { hostScope: 'any', rawBody: true }, async
     const record = db.tenantPaymentMethods.find(m => m.stripeAccountId === account.id);
     if (record) {
       record.stripeOnboardingStatus = stripeConnectLib.mapAccountStatus(account);
+      await persist();
+    }
+  }
+
+  // payment_intent.succeeded/payment_failed: apply the order-side
+  // consequences that lib/stripeConnect.js correctly has no access to
+  // (stock, notifications, order status) — the payments-table transition
+  // itself already happened inside processWebhookEvent above.
+  if (result.processed && (event.type === 'payment_intent.succeeded' || event.type === 'payment_intent.payment_failed')) {
+    const intent = event.data.object;
+    const paymentId = intent.metadata && intent.metadata.paymentId;
+    const payment = paymentId && db.payments.find(p => p.id === paymentId);
+    const order = payment && db.orders.find(o => o.id === payment.orderId);
+    if (order) {
+      const succeeded = event.type === 'payment_intent.succeeded';
+      order.paymentStatus = succeeded ? 'success' : 'failed';
+      for (const item of order.items) {
+        item.status = succeeded ? (item.fulfillment === 'shipping' ? 'pending' : item.fulfillment === 'booking' ? 'requested' : item.fulfillment === 'download' ? 'ready' : 'pending') : 'payment_failed';
+        if (succeeded && item.fulfillment === 'shipping') {
+          const product = findProduct(item.productId, order.tenantId);
+          if (product && typeof product.stock === 'number') {
+            product.stock -= item.qty;
+            db.stockMovements.push({ id: newId('stkmv'), tenantId: order.tenantId, productId: item.productId, change: -item.qty, reason: 'sale', orderId: order.id, createdBy: null, createdAt: Date.now() });
+          }
+        }
+      }
+      if (succeeded) {
+        const tenantForOrder = db.tenants.find(t => t.id === order.tenantId);
+        const itemsList = order.items.map(i => `- ${i.name} × ${i.qty} ($${(i.price * i.qty).toFixed(2)})`).join('\n');
+        const orderDate = new Date(order.createdAt).toLocaleString();
+        for (const admin of db.users.filter(u => u.tenantId === order.tenantId && u.role === 'admin')) {
+          const adminLang = await getRecipientLang(admin.email);
+          const subject = emailT(EMAIL_I18N, 'paymentReceivedSubject', adminLang)(order.id);
+          const emailBody = emailT(EMAIL_I18N, 'paymentReceivedBody', adminLang)(order.id, order.clientName, order.total.toFixed(2), orderDate, itemsList);
+          db.notifications.push({ id: newId('notif'), tenantId: order.tenantId, type: 'payment_received', to: admin.email, subject, body: emailBody, sentAt: Date.now() });
+          try { await sendRealEmail({ to: admin.email, subject, text: emailBody, html: wrapEmailHtml(emailBody, adminLang) }); } catch { /* best-effort, matches every other notification in this app */ }
+        }
+      }
       await persist();
     }
   }

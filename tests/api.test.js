@@ -1,6 +1,7 @@
 /** INTEGRATION TESTS — real HTTP requests against a live server instance. */
 const { suite, test, assert, request } = require('./harness');
 const JSZip = require('jszip');
+const { createPayment } = require('../lib/payments');
 
 module.exports = async function runApiTests(port) {
   const uniq = () => Math.random().toString(36).slice(2, 9);
@@ -2640,4 +2641,126 @@ module.exports = async function runApiTests(port) {
       assert.strictEqual(existingPayment.status, 'pending', 'the duplicate webhook delivery wrongly reprocessed the event');
     });
   });
+
+  await suite('Integration — Step 3: real Stripe test-mode checkout wiring', async () => {
+    // These tests cover everything genuinely testable without real network
+    // access to Stripe: every validation-rejection path (none of which ever
+    // reaches a real Stripe API call), and the webhook-side order
+    // consequences (stock, status, notification), proven via a real,
+    // correctly-signed webhook against a seeded pending order/payment.
+    // What is NOT covered here, and cannot be without a real Stripe test
+    // account: the actual PaymentIntent creation call itself.
+
+    async function setupStripeStore(sub) {
+      const { body: tenant } = await call('localhost', '/api/platform/tenants', { method: 'POST', body: JSON.stringify({ subdomain: sub, storeName: 'Stripe Checkout Store', adminName: 'Admin', adminEmail: `${sub}-admin-${uniq()}@test.dev`, adminPassword: 'password123', plan: 'store' }) });
+      const { body: cat } = await call(`${sub}.localhost`, '/api/admin/categories', { method: 'POST', headers: { Authorization: `Bearer ${tenant.token}` }, body: JSON.stringify({ name: 'Manual', group: 'other', fulfillment: 'manual' }) });
+      const { body: prod } = await call(`${sub}.localhost`, '/api/admin/products', { method: 'POST', headers: { Authorization: `Bearer ${tenant.token}` }, body: JSON.stringify({ name: 'Widget', price: 15, categoryId: cat.category.id }) });
+      const { body: reg } = await call(`${sub}.localhost`, '/api/auth/register', { method: 'POST', body: JSON.stringify({ name: 'Cust', email: `${sub}-client-${uniq()}@test.dev`, password: 'password123' }) });
+      return { tenant, prod, reg };
+    }
+
+    await test('checkout is rejected (400) when Stripe is not enabled/connected for this store', async () => {
+      const sub = 'sc-notenabled-' + uniq();
+      const { prod, reg } = await setupStripeStore(sub);
+      const { status, body } = await call(`${sub}.localhost`, '/api/orders/stripe', { method: 'POST', headers: { Authorization: `Bearer ${reg.token}` }, body: JSON.stringify({ items: [{ productId: prod.product.id, qty: 1 }] }) });
+      assert.strictEqual(status, 400);
+      assert.ok(body.error.includes('Stripe'));
+    });
+
+    await test('checkout is rejected (400) for a fulfillment type Stripe checkout does not yet support (download)', async () => {
+      const sub = 'stripecheckout-dl-' + uniq();
+      const { body: tenant } = await call('localhost', '/api/platform/tenants', { method: 'POST', body: JSON.stringify({ subdomain: sub, storeName: 'Stripe DL Store', adminName: 'Admin', adminEmail: `${sub}-admin-${uniq()}@test.dev`, adminPassword: 'password123', plan: 'store' }) });
+      const { body: cat } = await call(`${sub}.localhost`, '/api/admin/categories', { method: 'POST', headers: { Authorization: `Bearer ${tenant.token}` }, body: JSON.stringify({ name: 'Downloads', group: 'marketplace', fulfillment: 'download' }) });
+      const { body: prod } = await call(`${sub}.localhost`, '/api/admin/products', { method: 'POST', headers: { Authorization: `Bearer ${tenant.token}` }, body: JSON.stringify({ name: 'Ebook', price: 9, categoryId: cat.category.id }) });
+      const { body: reg } = await call(`${sub}.localhost`, '/api/auth/register', { method: 'POST', body: JSON.stringify({ name: 'Cust', email: `${sub}-client-${uniq()}@test.dev`, password: 'password123' }) });
+      const { getDb } = require('../server');
+      const dbRef = getDb();
+      dbRef.tenantPaymentMethods.push({ id: 'tpm-' + uniq(), tenantId: tenant.tenant.id, method: 'stripe', enabled: true, stripeAccountId: 'acct_fake', stripeOnboardingStatus: 'connected' });
+      const { status, body } = await call(`${sub}.localhost`, '/api/orders/stripe', { method: 'POST', headers: { Authorization: `Bearer ${reg.token}` }, body: JSON.stringify({ items: [{ productId: prod.product.id, qty: 1 }] }) });
+      assert.strictEqual(status, 400);
+      assert.ok(body.error.includes('download'));
+    });
+
+    await test('a client from a DIFFERENT store cannot hit this store\'s Stripe checkout endpoint (tenant isolation)', async () => {
+      const subA = 'stripecheckout-a-' + uniq();
+      const subB = 'stripecheckout-b-' + uniq();
+      const { prod: prodA } = await setupStripeStore(subA);
+      const { reg: regB } = await setupStripeStore(subB);
+      // regB's token is only valid on subB — using it against subA must fail, exactly like every other cross-tenant token check in this app.
+      const { status } = await call(`${subA}.localhost`, '/api/orders/stripe', { method: 'POST', headers: { Authorization: `Bearer ${regB.token}` }, body: JSON.stringify({ items: [{ productId: prodA.product.id, qty: 1 }] }) });
+      assert.strictEqual(status, 403);
+    });
+
+    await test('webhook confirmation of a Stripe order: decrements stock, marks the order paid, and notifies the admin \u2014 only once the webhook fires, never before', async () => {
+      const sub = 'stripecheckout-ok-' + uniq();
+      const { body: tenant } = await call('localhost', '/api/platform/tenants', { method: 'POST', body: JSON.stringify({ subdomain: sub, storeName: 'Stripe OK Store', adminName: 'Admin', adminEmail: `${sub}-admin-${uniq()}@test.dev`, adminPassword: 'password123', plan: 'store' }) });
+      const { body: cat } = await call(`${sub}.localhost`, '/api/admin/categories', { method: 'POST', headers: { Authorization: `Bearer ${tenant.token}` }, body: JSON.stringify({ name: 'Shippable', group: 'store', fulfillment: 'shipping' }) });
+      const { body: prod } = await call(`${sub}.localhost`, '/api/admin/products', { method: 'POST', headers: { Authorization: `Bearer ${tenant.token}` }, body: JSON.stringify({ name: 'Gadget', price: 20, categoryId: cat.category.id, stock: 5 }) });
+      const { body: reg } = await call(`${sub}.localhost`, '/api/auth/register', { method: 'POST', body: JSON.stringify({ name: 'Cust', email: `${sub}-client-${uniq()}@test.dev`, password: 'password123' }) });
+
+      const { getDb } = require('../server');
+      const dbRef = getDb();
+      // Seed the pending order/payment directly (standing in for what the
+      // real checkout route would create right up until its real,
+      // untestable Stripe API call) \u2014 this deliberately starts the test
+      // from the exact state that route produces, so what's actually being
+      // tested is the webhook's OWN correctness, not a re-implementation of it.
+      const order = { id: 'ord-' + uniq(), tenantId: tenant.tenant.id, clientId: 'placeholder', clientName: 'Cust', clientEmail: reg.user.email, items: [{ productId: prod.product.id, name: 'Gadget', price: 20, qty: 2, categoryId: cat.category.id, categoryName: 'Shippable', fulfillment: 'shipping', status: 'awaiting_payment' }], total: 40, paymentStatus: 'pending', status: 'pending', shippingAddress: '123 Test St', createdAt: Date.now() };
+      dbRef.orders.push(order);
+      const payment = await createPayment({ db: dbRef, supabaseAdminClient: null, tenantId: tenant.tenant.id, orderId: order.id, clientId: reg.user.id, method: 'stripe', status: 'pending', amount: 40 });
+
+      const stockBefore = findProductStock(dbRef, prod.product.id);
+      assert.strictEqual(stockBefore, 5, 'sanity check on starting stock');
+
+      const Stripe = require('stripe');
+      const stripeForSigning = Stripe(process.env.STRIPE_SECRET_KEY);
+      const eventObj = { id: 'evt_checkout_ok_' + uniq(), type: 'payment_intent.succeeded', account: 'acct_fake', data: { object: { metadata: { paymentId: payment.id } } } };
+      const payload = JSON.stringify(eventObj);
+      const header = stripeForSigning.webhooks.generateTestHeaderString({ payload, secret: process.env.STRIPE_WEBHOOK_SECRET });
+
+      const { status } = await call('localhost', '/api/webhooks/stripe', { method: 'POST', headers: { 'stripe-signature': header }, body: payload });
+      assert.strictEqual(status, 200);
+
+      const updatedOrder = dbRef.orders.find(o => o.id === order.id);
+      assert.strictEqual(updatedOrder.paymentStatus, 'success', 'order was not marked paid by the webhook');
+      assert.strictEqual(updatedOrder.items[0].status, 'pending', 'shipping item did not move to the correct fulfillment status');
+      const stockAfter = findProductStock(dbRef, prod.product.id);
+      assert.strictEqual(stockAfter, 3, 'stock was not decremented by the webhook (5 - 2 = 3 expected)');
+
+      const notification = dbRef.notifications.find(n => n.tenantId === tenant.tenant.id && n.type === 'payment_received');
+      assert.ok(notification, 'no payment_received notification was sent after webhook confirmation');
+    });
+
+    await test('a FAILED Stripe payment leaves the order failed \u2014 no stock decremented, no false paid order', async () => {
+      const sub = 'stripecheckout-fail-' + uniq();
+      const { body: tenant } = await call('localhost', '/api/platform/tenants', { method: 'POST', body: JSON.stringify({ subdomain: sub, storeName: 'Stripe Fail Store', adminName: 'Admin', adminEmail: `${sub}-admin-${uniq()}@test.dev`, adminPassword: 'password123', plan: 'store' }) });
+      const { body: cat } = await call(`${sub}.localhost`, '/api/admin/categories', { method: 'POST', headers: { Authorization: `Bearer ${tenant.token}` }, body: JSON.stringify({ name: 'Shippable', group: 'store', fulfillment: 'shipping' }) });
+      const { body: prod } = await call(`${sub}.localhost`, '/api/admin/products', { method: 'POST', headers: { Authorization: `Bearer ${tenant.token}` }, body: JSON.stringify({ name: 'Gadget2', price: 20, categoryId: cat.category.id, stock: 5 }) });
+      const { body: reg } = await call(`${sub}.localhost`, '/api/auth/register', { method: 'POST', body: JSON.stringify({ name: 'Cust', email: `${sub}-client-${uniq()}@test.dev`, password: 'password123' }) });
+
+      const { getDb } = require('../server');
+      const dbRef = getDb();
+      const order = { id: 'ord-' + uniq(), tenantId: tenant.tenant.id, clientId: reg.user.id, clientName: 'Cust', clientEmail: reg.user.email, items: [{ productId: prod.product.id, name: 'Gadget2', price: 20, qty: 1, categoryId: cat.category.id, categoryName: 'Shippable', fulfillment: 'shipping', status: 'awaiting_payment' }], total: 20, paymentStatus: 'pending', status: 'pending', shippingAddress: '123 Test St', createdAt: Date.now() };
+      dbRef.orders.push(order);
+      const payment = await createPayment({ db: dbRef, supabaseAdminClient: null, tenantId: tenant.tenant.id, orderId: order.id, clientId: reg.user.id, method: 'stripe', status: 'pending', amount: 20 });
+
+      const Stripe = require('stripe');
+      const stripeForSigning = Stripe(process.env.STRIPE_SECRET_KEY);
+      const eventObj = { id: 'evt_checkout_fail_' + uniq(), type: 'payment_intent.payment_failed', account: 'acct_fake', data: { object: { metadata: { paymentId: payment.id } } } };
+      const payload = JSON.stringify(eventObj);
+      const header = stripeForSigning.webhooks.generateTestHeaderString({ payload, secret: process.env.STRIPE_WEBHOOK_SECRET });
+      await call('localhost', '/api/webhooks/stripe', { method: 'POST', headers: { 'stripe-signature': header }, body: payload });
+
+      const updatedOrder = dbRef.orders.find(o => o.id === order.id);
+      assert.strictEqual(updatedOrder.paymentStatus, 'failed', 'a failed payment must never leave the order looking paid');
+      assert.strictEqual(updatedOrder.items[0].status, 'payment_failed');
+      const stockAfter = findProductStock(dbRef, prod.product.id);
+      assert.strictEqual(stockAfter, 5, 'stock must NOT be decremented for a failed payment');
+    });
+  });
+
+  function findProductStock(dbRef, productId) {
+    for (const p of dbRef.products) if (p.id === productId) return p.stock;
+    return undefined;
+  }
 };
