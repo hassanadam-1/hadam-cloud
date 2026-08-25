@@ -6,10 +6,13 @@ node_modules/
 
 # Local runtime data / secrets — never belong in version control.
 data/db.json
+data/uploads/
 .env
 .env.local
 my-supabase-keys.sh
 hadam-backup-codes.txt
+hadam-backup-codes*.txt
+Login backup codes/
 
 # Stray debug/one-off scripts accumulated across many earlier sessions —
 # not part of the actual application, found committed during the
@@ -28,6 +31,10 @@ test-webhook-duplicate-prevention.js
 email.js
 download.txt
 server.js.bak-*
+# Apparent shell-command-typo artifacts that have recurred more than once —
+# not real application files.
+main
+node check-order.js
 
 # Large third-party binaries that don't belong in the repo at all.
 cloudflared.exe
