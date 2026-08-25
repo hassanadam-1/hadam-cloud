@@ -140,7 +140,9 @@ const I18N = {
     planAddToMarketplaceWarning: "This will list your store on Hadam's shared Marketplace & Stores directory immediately — every product you have will become visible there. Continue?",
     planChangeGenericWarning: "Change your store's plan? This takes effect immediately.", savedMsg: 'Saved.',
     planLabelForm: 'Plan', employeeRoleOpt: 'Employee', adminRoleOpt: 'Admin',
-    refundRequestedStatus: 'Refund requested', requestRefundBtn: 'Request refund', storeDetailsH3: 'Store details',
+    refundRequestedStatus: 'Refund requested', requestRefundBtn: 'Request refund',
+    stripePaymentsH3: 'Stripe payments', stripeIntroText: 'Connect your own Stripe account to accept card payments directly \u2014 customer payments go straight to your account, not through Hadam.', stripeConnectBtn: 'Connect Stripe', stripeContinueOnboardingBtn: 'Continue Stripe setup', stripeEnableAsPaymentMethod: 'Accept Stripe payments in this store', stripeStatus_not_connected: 'Not connected', stripeStatus_pending: 'Setup incomplete', stripeStatus_connected: 'Connected', stripeStatus_restricted: 'Action needed', stripeNotConnectedHint: 'Connect a Stripe account to start accepting card payments.', stripePendingHint: "You've started connecting Stripe, but setup isn't finished yet \u2014 continue where you left off.", stripeConnectedHint: 'Your Stripe account is fully connected and ready to accept payments.', stripeRestrictedHint: 'Stripe needs more information from you before this account can accept payments \u2014 continuing setup will show what\u2019s required.', stripeReturnMsg: "Welcome back \u2014 we're checking your Stripe connection status.", stripeRefreshMsg: 'That Stripe setup link expired. Click below to get a new one.',
+    storeDetailsH3: 'Store details',
     alreadyDownloadedLabel: 'Downloaded', noRefundAfterDownloadHint: 'Not eligible for refund — this digital product has already been downloaded.',
     languageCodeLabel: 'Language code', maxDownloadsLabel: 'Max downloads', descriptionLabel: 'Description',
     marketplaceListingTagLabel: 'Marketplace listing tag', downloadWindowLabel: 'Download window (hours)', addAccountBtn: 'Add account',
@@ -363,7 +365,9 @@ const I18N = {
     planAddToMarketplaceWarning: 'سيؤدي هذا إلى إدراج متجرك في دليل سوق ومتاجر هدام المشترك فورًا — ستصبح كل منتجاتك مرئية هناك. هل تريد المتابعة؟',
     planChangeGenericWarning: 'تغيير خطة متجرك؟ يسري هذا فورًا.', savedMsg: 'تم الحفظ.',
     planLabelForm: 'الخطة', employeeRoleOpt: 'موظف', adminRoleOpt: 'مسؤول',
-    refundRequestedStatus: 'تم طلب الاسترداد', requestRefundBtn: 'طلب استرداد', storeDetailsH3: 'تفاصيل المتجر',
+    refundRequestedStatus: 'تم طلب الاسترداد', requestRefundBtn: 'طلب استرداد',
+    stripePaymentsH3: 'مدفوعات Stripe', stripeIntroText: 'اربط حساب Stripe الخاص بك لقبول المدفوعات بالبطاقة مباشرة — تذهب مدفوعات العملاء إلى حسابك مباشرة، وليس عبر هدام.', stripeConnectBtn: 'ربط Stripe', stripeContinueOnboardingBtn: 'متابعة إعداد Stripe', stripeEnableAsPaymentMethod: 'قبول مدفوعات Stripe في هذا المتجر', stripeStatus_not_connected: 'غير مرتبط', stripeStatus_pending: 'الإعداد غير مكتمل', stripeStatus_connected: 'مرتبط', stripeStatus_restricted: 'يتطلب إجراء', stripeNotConnectedHint: 'اربط حساب Stripe لبدء قبول المدفوعات بالبطاقة.', stripePendingHint: 'بدأت في ربط Stripe، لكن الإعداد لم يكتمل بعد — تابع من حيث توقفت.', stripeConnectedHint: 'حساب Stripe الخاص بك مرتبط بالكامل وجاهز لقبول المدفوعات.', stripeRestrictedHint: 'يحتاج Stripe إلى مزيد من المعلومات منك قبل أن يتمكن هذا الحساب من قبول المدفوعات — متابعة الإعداد ستُظهر ما هو مطلوب.', stripeReturnMsg: 'مرحبًا بعودتك — نتحقق من حالة اتصال Stripe الخاص بك.', stripeRefreshMsg: 'انتهت صلاحية رابط إعداد Stripe هذا. انقر أدناه للحصول على رابط جديد.',
+    storeDetailsH3: 'تفاصيل المتجر',
     alreadyDownloadedLabel: 'تم التنزيل', noRefundAfterDownloadHint: 'غير مؤهل للاسترداد — تم تنزيل هذا المنتج الرقمي بالفعل.',
     languageCodeLabel: 'رمز اللغة', maxDownloadsLabel: 'الحد الأقصى للتنزيلات', descriptionLabel: 'الوصف',
     marketplaceListingTagLabel: 'تصنيف إدراج السوق', downloadWindowLabel: 'نافذة التنزيل (ساعات)', addAccountBtn: 'إضافة حساب',
@@ -586,7 +590,9 @@ const I18N = {
     planAddToMarketplaceWarning: "Cela listera immédiatement votre boutique sur l'annuaire Marketplace & Boutiques partagé de Hadam — tous vos produits y deviendront visibles. Continuer ?",
     planChangeGenericWarning: "Changer l'offre de votre boutique ? Cela prend effet immédiatement.", savedMsg: 'Enregistré.',
     planLabelForm: 'Offre', employeeRoleOpt: 'Employé', adminRoleOpt: 'Admin',
-    refundRequestedStatus: 'Remboursement demandé', requestRefundBtn: 'Demander un remboursement', storeDetailsH3: 'Détails de la boutique',
+    refundRequestedStatus: 'Remboursement demandé', requestRefundBtn: 'Demander un remboursement',
+    stripePaymentsH3: 'Paiements Stripe', stripeIntroText: 'Connectez votre propre compte Stripe pour accepter les paiements par carte directement — les paiements des clients vont directement sur votre compte, pas via Hadam.', stripeConnectBtn: 'Connecter Stripe', stripeContinueOnboardingBtn: 'Poursuivre la configuration Stripe', stripeEnableAsPaymentMethod: 'Accepter les paiements Stripe dans cette boutique', stripeStatus_not_connected: 'Non connecté', stripeStatus_pending: 'Configuration incomplète', stripeStatus_connected: 'Connecté', stripeStatus_restricted: 'Action requise', stripeNotConnectedHint: 'Connectez un compte Stripe pour commencer à accepter les paiements par carte.', stripePendingHint: "Vous avez commencé à connecter Stripe, mais la configuration n'est pas terminée — reprenez là où vous vous étiez arrêté.", stripeConnectedHint: 'Votre compte Stripe est entièrement connecté et prêt à accepter des paiements.', stripeRestrictedHint: 'Stripe a besoin de plus d\u2019informations avant que ce compte puisse accepter des paiements — poursuivre la configuration indiquera ce qui est requis.', stripeReturnMsg: 'Bon retour — nous vérifions le statut de votre connexion Stripe.', stripeRefreshMsg: 'Ce lien de configuration Stripe a expiré. Cliquez ci-dessous pour en obtenir un nouveau.',
+    storeDetailsH3: 'Détails de la boutique',
     alreadyDownloadedLabel: 'Téléchargé', noRefundAfterDownloadHint: 'Non éligible au remboursement — ce produit numérique a déjà été téléchargé.',
     languageCodeLabel: 'Code de langue', maxDownloadsLabel: 'Téléchargements max', descriptionLabel: 'Description',
     marketplaceListingTagLabel: 'Tag de listing Marketplace', downloadWindowLabel: 'Fenêtre de téléchargement (heures)', addAccountBtn: 'Ajouter le compte',
@@ -1333,6 +1339,13 @@ async function boot() {
     catch { state.token = null; localStorage.removeItem('hadam_token'); }
   }
   renderNav('welcome');
+  const stripeOnboardingParam = new URLSearchParams(location.search).get('stripeOnboarding');
+  if (stripeOnboardingParam && state.user && state.user.role === 'admin') {
+    history.replaceState(null, '', location.pathname); // drop the query param from the URL bar
+    state.adminTab = 'settings';
+    state._stripeOnboardingReturn = stripeOnboardingParam; // 'return' or 'refresh' — read once by the settings panel to show the right message, then cleared
+    return go('admin');
+  }
   go(state.user && state.user.role === 'admin' ? 'admin' : state.user && state.user.role === 'employee' ? 'employee' : 'welcome');
 }
 boot();
@@ -2433,6 +2446,9 @@ async function renderAdminTab() {
     state._currentPlan = info.plan;
     state._editingStoreInfo = info;
     const existingStoreLangs = info.translations ? Object.keys(info.translations) : [];
+    const stripeStatus = await api('/api/admin/stripe/status');
+    const stripeReturnFlag = state._stripeOnboardingReturn;
+    state._stripeOnboardingReturn = null; // shown once, then cleared
     body.innerHTML = `
       <div class="panel" style="max-width:560px;">
         <h3>${t('subscriptionH3')}</h3>
@@ -2444,6 +2460,24 @@ async function renderAdminTab() {
           <button class="btn secondary" onclick="renewSubscription('marketplace')">${t('renewMarketplaceOnlyBtn')}</button>
           <button class="btn" onclick="renewSubscription('both')">${t('renewBothBtn')}</button>
           ${helpIcon('renewButtons', { what: 'helpRenewButtonsWhat', why: 'helpRenewButtonsWhy', next: 'helpRenewButtonsNext', rules: 'helpRenewButtonsRules' })}
+        </div>
+      </div>
+      <div class="panel" style="max-width:560px;margin-top:18px;">
+        <h3>${t('stripePaymentsH3')}</h3>
+        ${stripeReturnFlag === 'return' ? `<div class="msg" style="background:var(--panel-2);border-radius:8px;padding:10px;margin-bottom:10px;">${t('stripeReturnMsg')}</div>` : ''}
+        ${stripeReturnFlag === 'refresh' ? `<div class="msg" style="background:var(--warn-bg,#3a2a00);border-radius:8px;padding:10px;margin-bottom:10px;">${t('stripeRefreshMsg')}</div>` : ''}
+        <p style="color:var(--text-dim);font-size:13px;">${t('stripeIntroText')}</p>
+        <div style="display:flex;align-items:center;gap:10px;margin:10px 0;">
+          <span class="badge ${stripeStatus.onboardingStatus === 'connected' ? 'badge-success' : stripeStatus.onboardingStatus === 'restricted' ? 'badge-danger' : 'badge-warn'}">${t('stripeStatus_' + stripeStatus.onboardingStatus)}</span>
+        </div>
+        ${stripeStatus.onboardingStatus === 'not_connected' ? `<p style="color:var(--text-dim);font-size:13px;">${t('stripeNotConnectedHint')}</p>` : ''}
+        ${stripeStatus.onboardingStatus === 'pending' ? `<p style="color:var(--text-dim);font-size:13px;">${t('stripePendingHint')}</p>` : ''}
+        ${stripeStatus.onboardingStatus === 'restricted' ? `<p style="color:var(--text-dim);font-size:13px;">${t('stripeRestrictedHint')}</p>` : ''}
+        ${stripeStatus.onboardingStatus === 'connected' ? `<p style="color:var(--text-dim);font-size:13px;">${t('stripeConnectedHint')}</p>` : ''}
+        <div id="stripeMsg"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px;">
+          ${stripeStatus.onboardingStatus !== 'connected' ? `<button class="btn" onclick="connectStripe()">${stripeStatus.onboardingStatus === 'not_connected' ? t('stripeConnectBtn') : t('stripeContinueOnboardingBtn')}</button>` : ''}
+          ${stripeStatus.onboardingStatus === 'connected' ? `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="stripeEnabledToggle" ${stripeStatus.enabled ? 'checked' : ''} onchange="toggleStripeEnabled(this.checked)"> ${t('stripeEnableAsPaymentMethod')}</label>` : ''}
         </div>
       </div>
       <div class="panel" style="max-width:560px;margin-top:18px;">
@@ -2574,6 +2608,23 @@ async function saveStoreSettings() {
     state._currentPlan = newPlan;
     msg.innerHTML = `<div class="msg success">${t('savedMsg')}</div>`;
   } catch (e) { msg.innerHTML = `<div class="msg error">${esc(e.message)}</div>`; }
+}
+async function connectStripe() {
+  const msg = document.getElementById('stripeMsg');
+  try {
+    const { onboardingUrl } = await api('/api/admin/stripe/connect', { method: 'POST' });
+    location.href = onboardingUrl; // hands off to Stripe's own hosted onboarding form entirely — nothing here collects or sees any of that information
+  } catch (e) { msg.innerHTML = `<div class="msg error">${esc(e.message)}</div>`; }
+}
+async function toggleStripeEnabled(enabled) {
+  const msg = document.getElementById('stripeMsg');
+  try {
+    await api('/api/admin/stripe/enable', { method: 'PATCH', body: JSON.stringify({ enabled }) });
+    msg.innerHTML = `<div class="msg success">${t('savedMsg')}</div>`;
+  } catch (e) {
+    msg.innerHTML = `<div class="msg error">${esc(e.message)}</div>`;
+    document.getElementById('stripeEnabledToggle').checked = !enabled; // revert the visual toggle since the actual change didn't take
+  }
 }
 async function saveAccessSettings() {
   const msg = document.getElementById('accessSettingsMsg');

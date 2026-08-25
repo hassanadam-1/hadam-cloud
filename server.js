@@ -2487,7 +2487,7 @@ route('POST', '/api/admin/stripe/connect', { hostScope: 'tenant', auth: true, ro
   const baseUrl = `https://${tenant.subdomain}.${BASE_DOMAIN}`;
   const url = await stripeConnectLib.createOnboardingLink({
     stripe: stripeClient(), stripeAccountId: record.stripeAccountId,
-    returnUrl: `${baseUrl}/admin/stripe/return`, refreshUrl: `${baseUrl}/admin/stripe/refresh`,
+    returnUrl: `${baseUrl}/?stripeOnboarding=return`, refreshUrl: `${baseUrl}/?stripeOnboarding=refresh`,
   });
   send(res, 200, { onboardingUrl: url, stripeAccountId: record.stripeAccountId });
 });
