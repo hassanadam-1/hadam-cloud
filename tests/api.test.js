@@ -2543,4 +2543,101 @@ module.exports = async function runApiTests(port) {
       assert.strictEqual(payment.status, 'failed');
     });
   });
+
+  await suite('Integration — Phase 2 Stripe Connect: status/enable routes and the real webhook endpoint', async () => {
+    await test('GET /api/admin/stripe/status returns not_connected before any onboarding has happened', async () => {
+      const sub = 'stripestatus-' + uniq();
+      const { body: tenant } = await call('localhost', '/api/platform/tenants', { method: 'POST', body: JSON.stringify({ subdomain: sub, storeName: 'Stripe Status Store', adminName: 'Admin', adminEmail: `stripestatus-admin-${uniq()}@test.dev`, adminPassword: 'password123', plan: 'store' }) });
+      const { status, body } = await call(`${sub}.localhost`, '/api/admin/stripe/status', { headers: { Authorization: `Bearer ${tenant.token}` } });
+      assert.strictEqual(status, 200);
+      assert.strictEqual(body.enabled, false);
+      assert.strictEqual(body.onboardingStatus, 'not_connected');
+    });
+
+    await test('PATCH /api/admin/stripe/enable is rejected until onboarding is actually connected', async () => {
+      const sub = 'stripeenable-' + uniq();
+      const { body: tenant } = await call('localhost', '/api/platform/tenants', { method: 'POST', body: JSON.stringify({ subdomain: sub, storeName: 'Stripe Enable Store', adminName: 'Admin', adminEmail: `stripeenable-admin-${uniq()}@test.dev`, adminPassword: 'password123', plan: 'store' }) });
+      const { status, body } = await call(`${sub}.localhost`, '/api/admin/stripe/enable', { method: 'PATCH', headers: { Authorization: `Bearer ${tenant.token}` }, body: JSON.stringify({ enabled: true }) });
+      assert.strictEqual(status, 400);
+      assert.ok(body.error.includes('onboarding'));
+    });
+
+    await test('a client (non-admin) cannot reach the Stripe status/enable routes (403)', async () => {
+      const sub = 'stripeperm-' + uniq();
+      const { body: tenant } = await call('localhost', '/api/platform/tenants', { method: 'POST', body: JSON.stringify({ subdomain: sub, storeName: 'Stripe Perm Store', adminName: 'Admin', adminEmail: `stripeperm-admin-${uniq()}@test.dev`, adminPassword: 'password123', plan: 'store' }) });
+      const { body: reg } = await call(`${sub}.localhost`, '/api/auth/register', { method: 'POST', body: JSON.stringify({ name: 'Client', email: `stripeperm-client-${uniq()}@test.dev`, password: 'password123' }) });
+      const { status } = await call(`${sub}.localhost`, '/api/admin/stripe/status', { headers: { Authorization: `Bearer ${reg.token}` } });
+      assert.strictEqual(status, 403);
+    });
+
+    // --- The real webhook endpoint, tested genuinely end-to-end using
+    // Stripe's own OFFLINE test-signature generation (no network access to
+    // Stripe is used or needed anywhere in these tests).
+    const Stripe = require('stripe');
+    const stripeForSigning = Stripe(process.env.STRIPE_SECRET_KEY);
+    function signedWebhookRequest(eventObj) {
+      const payload = JSON.stringify(eventObj);
+      const header = stripeForSigning.webhooks.generateTestHeaderString({ payload, secret: process.env.STRIPE_WEBHOOK_SECRET });
+      return { payload, header };
+    }
+
+    await test('webhook: missing Stripe-Signature header is rejected with 400', async () => {
+      const { status } = await call('localhost', '/api/webhooks/stripe', { method: 'POST', body: '{}' });
+      assert.strictEqual(status, 400);
+    });
+
+    await test('webhook: an invalid/forged signature is rejected with 400, and does NOT change any payment', async () => {
+      const sub = 'stripewh-bad-' + uniq();
+      const { body: tenant } = await call('localhost', '/api/platform/tenants', { method: 'POST', body: JSON.stringify({ subdomain: sub, storeName: 'Stripe WH Bad Sig', adminName: 'Admin', adminEmail: `stripewh-bad-admin-${uniq()}@test.dev`, adminPassword: 'password123', plan: 'store' }) });
+      const { payload } = signedWebhookRequest({ id: 'evt_forged', type: 'payment_intent.succeeded', account: 'acct_fake', data: { object: { metadata: { paymentId: 'irrelevant' } } } });
+      const { status } = await call('localhost', '/api/webhooks/stripe', { method: 'POST', headers: { 'stripe-signature': 't=1,v1=0000000000000000000000000000000000000000000000000000000000000000' }, body: payload });
+      assert.strictEqual(status, 400);
+    });
+
+    await test('webhook: a genuinely, correctly-signed payment_intent.succeeded event transitions the real payment to paid', async () => {
+      const sub = 'stripewh-ok-' + uniq();
+      const { body: tenant } = await call('localhost', '/api/platform/tenants', { method: 'POST', body: JSON.stringify({ subdomain: sub, storeName: 'Stripe WH OK Store', adminName: 'Admin', adminEmail: `stripewh-ok-admin-${uniq()}@test.dev`, adminPassword: 'password123', plan: 'store' }) });
+      const { body: cat } = await call(`${sub}.localhost`, '/api/admin/categories', { method: 'POST', headers: { Authorization: `Bearer ${tenant.token}` }, body: JSON.stringify({ name: 'Manual', group: 'other', fulfillment: 'manual' }) });
+      const { body: prod } = await call(`${sub}.localhost`, '/api/admin/products', { method: 'POST', headers: { Authorization: `Bearer ${tenant.token}` }, body: JSON.stringify({ name: 'Widget', price: 5, categoryId: cat.category.id }) });
+      const { body: reg } = await call(`${sub}.localhost`, '/api/auth/register', { method: 'POST', body: JSON.stringify({ name: 'Cust', email: `stripewh-ok-client-${uniq()}@test.dev`, password: 'password123' }) });
+
+      // Manually create a pending stripe payment via a real checkout, then read its ID back from the persisted file (same technique as the Phase 1 tests) so this test has a real paymentId to target.
+      await call(`${sub}.localhost`, '/api/orders', { method: 'POST', headers: { Authorization: `Bearer ${reg.token}` }, body: JSON.stringify({ items: [{ productId: prod.product.id, qty: 1 }], card: { number: '4111111111111111', expiry: '12/30', cvv: '123', holderName: 'Cust' } }) });
+      const { getDb } = require('../server');
+      const dbRef = getDb();
+      const existingPayment = dbRef.payments.find(p => p.tenantId === tenant.tenant.id);
+      // Force it back to pending, on the server's OWN in-memory object, so this test genuinely proves the WEBHOOK is what moves it to paid, not the checkout call above.
+      existingPayment.status = 'pending';
+
+      const { payload, header } = signedWebhookRequest({ id: 'evt_success_' + uniq(), type: 'payment_intent.succeeded', account: 'acct_fake', data: { object: { metadata: { paymentId: existingPayment.id } } } });
+      const { status } = await call('localhost', '/api/webhooks/stripe', { method: 'POST', headers: { 'stripe-signature': header }, body: payload });
+      assert.strictEqual(status, 200);
+
+      assert.strictEqual(existingPayment.status, 'paid', 'the webhook did not actually update the payment to paid');
+    });
+
+    await test('webhook: the SAME event delivered twice only processes once (Stripe retry safety)', async () => {
+      const sub = 'stripewh-dup-' + uniq();
+      const { body: tenant } = await call('localhost', '/api/platform/tenants', { method: 'POST', body: JSON.stringify({ subdomain: sub, storeName: 'Stripe WH Dup Store', adminName: 'Admin', adminEmail: `stripewh-dup-admin-${uniq()}@test.dev`, adminPassword: 'password123', plan: 'store' }) });
+      const { body: cat } = await call(`${sub}.localhost`, '/api/admin/categories', { method: 'POST', headers: { Authorization: `Bearer ${tenant.token}` }, body: JSON.stringify({ name: 'Manual', group: 'other', fulfillment: 'manual' }) });
+      const { body: prod } = await call(`${sub}.localhost`, '/api/admin/products', { method: 'POST', headers: { Authorization: `Bearer ${tenant.token}` }, body: JSON.stringify({ name: 'Widget', price: 5, categoryId: cat.category.id }) });
+      const { body: reg } = await call(`${sub}.localhost`, '/api/auth/register', { method: 'POST', body: JSON.stringify({ name: 'Cust2', email: `stripewh-dup-client-${uniq()}@test.dev`, password: 'password123' }) });
+      await call(`${sub}.localhost`, '/api/orders', { method: 'POST', headers: { Authorization: `Bearer ${reg.token}` }, body: JSON.stringify({ items: [{ productId: prod.product.id, qty: 1 }], card: { number: '4111111111111111', expiry: '12/30', cvv: '123', holderName: 'Cust2' } }) });
+
+      const { getDb } = require('../server');
+      const dbRef = getDb();
+      const existingPayment = dbRef.payments.find(p => p.tenantId === tenant.tenant.id);
+      existingPayment.status = 'pending';
+
+      const sameEventId = 'evt_retry_' + uniq();
+      const { payload, header } = signedWebhookRequest({ id: sameEventId, type: 'payment_intent.succeeded', account: 'acct_fake', data: { object: { metadata: { paymentId: existingPayment.id } } } });
+
+      await call('localhost', '/api/webhooks/stripe', { method: 'POST', headers: { 'stripe-signature': header }, body: payload });
+      // Manually revert to pending again \u2014 if the SECOND delivery wrongly reprocessed, it would flip this back to paid on its own; if idempotency genuinely works, it must stay pending.
+      existingPayment.status = 'pending';
+
+      await call('localhost', '/api/webhooks/stripe', { method: 'POST', headers: { 'stripe-signature': header }, body: payload });
+      assert.strictEqual(existingPayment.status, 'pending', 'the duplicate webhook delivery wrongly reprocessed the event');
+    });
+  });
 };

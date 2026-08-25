@@ -12,7 +12,8 @@
     "node": ">=16"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.0"
+    "@supabase/supabase-js": "^2.45.0",
+    "stripe": "^22.5.0"
   },
   "devDependencies": {
     "jszip": "^3.10.1"

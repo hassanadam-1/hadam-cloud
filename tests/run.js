@@ -13,6 +13,12 @@ if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
 process.env.HADAM_DB_PATH = TEST_DB;
 process.env.HADAM_TEST_MODE = '1';
 process.env.JWT_SECRET = 'test-secret';
+// Fake, local-only Stripe test-mode credentials — used ONLY for offline
+// HMAC signature generation/verification in Phase 2 webhook tests (see
+// stripe.webhooks.generateTestHeaderString / constructEvent). No real
+// Stripe account, network access, or real key is involved anywhere here.
+process.env.STRIPE_SECRET_KEY = 'sk_test_fake_key_for_local_testing_only';
+process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_fake_secret_for_local_testing_only';
 
 const { summary } = require('./harness');
 const { server, initDb } = require('../server');

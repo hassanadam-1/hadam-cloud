@@ -160,6 +160,110 @@ module.exports = async function runUnitTests() {
       assert.strictEqual(forOrder1[0].orderId, 'o-1');
     });
   });
+  await suite('Unit — Phase 2 Stripe Connect (lib/stripeConnect.js)', async () => {
+    const { mapAccountStatus, createConnectedAccount, createOnboardingLink, createPaymentIntent, processWebhookEvent, isEventAlreadyProcessed } = require('../lib/stripeConnect');
+    const { createPayment } = require('../lib/payments');
+
+    await test('mapAccountStatus: no account -> not_connected', () => {
+      assert.strictEqual(mapAccountStatus(null), 'not_connected');
+    });
+    await test('mapAccountStatus: charges+payouts enabled -> connected', () => {
+      assert.strictEqual(mapAccountStatus({ charges_enabled: true, payouts_enabled: true }), 'connected');
+    });
+    await test('mapAccountStatus: disabled_reason present -> restricted', () => {
+      assert.strictEqual(mapAccountStatus({ charges_enabled: false, payouts_enabled: false, requirements: { disabled_reason: 'requirements.past_due' } }), 'restricted');
+    });
+    await test('mapAccountStatus: incomplete, no disabled reason -> pending', () => {
+      assert.strictEqual(mapAccountStatus({ charges_enabled: false, payouts_enabled: false }), 'pending');
+    });
+
+    await test('createConnectedAccount calls Stripe with type express and tenant metadata', async () => {
+      let captured;
+      const fakeStripe = { accounts: { create: async (params) => { captured = params; return { id: 'acct_fake123' }; } } };
+      const id = await createConnectedAccount({ stripe: fakeStripe, tenantId: 't-1' });
+      assert.strictEqual(id, 'acct_fake123');
+      assert.strictEqual(captured.type, 'express');
+      assert.strictEqual(captured.metadata.tenantId, 't-1');
+    });
+
+    await test('createOnboardingLink passes the correct account and URLs', async () => {
+      let captured;
+      const fakeStripe = { accountLinks: { create: async (params) => { captured = params; return { url: 'https://connect.stripe.com/fake' }; } } };
+      const url = await createOnboardingLink({ stripe: fakeStripe, stripeAccountId: 'acct_fake123', returnUrl: 'https://x/return', refreshUrl: 'https://x/refresh' });
+      assert.strictEqual(url, 'https://connect.stripe.com/fake');
+      assert.strictEqual(captured.account, 'acct_fake123');
+      assert.strictEqual(captured.type, 'account_onboarding');
+      assert.strictEqual(captured.return_url, 'https://x/return');
+    });
+
+    await test('createPaymentIntent routes funds to the connected account and converts to cents', async () => {
+      let captured;
+      const fakeStripe = { paymentIntents: { create: async (params) => { captured = params; return { id: 'pi_fake123' }; } } };
+      await createPaymentIntent({ stripe: fakeStripe, stripeAccountId: 'acct_fake123', amount: 19.99, currency: 'usd' });
+      assert.strictEqual(captured.amount, 1999);
+      assert.strictEqual(captured.transfer_data.destination, 'acct_fake123');
+      assert.strictEqual(captured.currency, 'usd');
+    });
+    await test('createPaymentIntent has no application_fee_amount \u2014 no platform fee, per the explicit product decision', async () => {
+      let captured;
+      const fakeStripe = { paymentIntents: { create: async (params) => { captured = params; return { id: 'pi_fake123' }; } } };
+      await createPaymentIntent({ stripe: fakeStripe, stripeAccountId: 'acct_fake123', amount: 10 });
+      assert.strictEqual(captured.application_fee_amount, undefined);
+    });
+
+    await test('processWebhookEvent: payment_intent.succeeded transitions the payment to paid', async () => {
+      const db = { payments: [], stripeWebhookEvents: [] };
+      const payment = await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'stripe', amount: 10, status: 'pending' });
+      const event = { id: 'evt_1', type: 'payment_intent.succeeded', account: 'acct_fake123', data: { object: { metadata: { paymentId: payment.id } } } };
+      const result = await processWebhookEvent({ db, supabaseAdminClient: null, event });
+      assert.strictEqual(result.processed, true);
+      assert.strictEqual(db.payments[0].status, 'paid');
+    });
+
+    await test('processWebhookEvent: payment_intent.payment_failed transitions the payment to failed', async () => {
+      const db = { payments: [], stripeWebhookEvents: [] };
+      const payment = await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'stripe', amount: 10, status: 'pending' });
+      const event = { id: 'evt_2', type: 'payment_intent.payment_failed', account: 'acct_fake123', data: { object: { metadata: { paymentId: payment.id } } } };
+      await processWebhookEvent({ db, supabaseAdminClient: null, event });
+      assert.strictEqual(db.payments[0].status, 'failed');
+    });
+
+    await test('processWebhookEvent: charge.refunded (full amount) transitions to refunded', async () => {
+      const db = { payments: [], stripeWebhookEvents: [] };
+      const payment = await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'stripe', amount: 10, status: 'paid' });
+      const event = { id: 'evt_3', type: 'charge.refunded', account: 'acct_fake123', data: { object: { metadata: { paymentId: payment.id }, amount: 1000, amount_refunded: 1000 } } };
+      await processWebhookEvent({ db, supabaseAdminClient: null, event });
+      assert.strictEqual(db.payments[0].status, 'refunded');
+    });
+
+    await test('processWebhookEvent: charge.refunded (partial amount) transitions to partially_refunded', async () => {
+      const db = { payments: [], stripeWebhookEvents: [] };
+      const payment = await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'stripe', amount: 10, status: 'paid' });
+      const event = { id: 'evt_4', type: 'charge.refunded', account: 'acct_fake123', data: { object: { metadata: { paymentId: payment.id }, amount: 1000, amount_refunded: 500 } } };
+      await processWebhookEvent({ db, supabaseAdminClient: null, event });
+      assert.strictEqual(db.payments[0].status, 'partially_refunded');
+    });
+
+    await test('processWebhookEvent: the SAME event.id is never processed twice', async () => {
+      const db = { payments: [], stripeWebhookEvents: [] };
+      const payment = await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'stripe', amount: 10, status: 'pending' });
+      const event = { id: 'evt_duplicate', type: 'payment_intent.succeeded', account: 'acct_fake123', data: { object: { metadata: { paymentId: payment.id } } } };
+      const first = await processWebhookEvent({ db, supabaseAdminClient: null, event });
+      // Manually revert status to simulate what would happen if the event were WRONGLY reprocessed.
+      db.payments[0].status = 'pending';
+      const second = await processWebhookEvent({ db, supabaseAdminClient: null, event });
+      assert.strictEqual(first.processed, true);
+      assert.strictEqual(second.processed, false);
+      assert.strictEqual(second.reason, 'duplicate_event');
+      assert.strictEqual(db.payments[0].status, 'pending', 'the second call must NOT have touched the payment again');
+    });
+
+    await test('isEventAlreadyProcessed correctly distinguishes seen vs. unseen event ids', async () => {
+      const db = { stripeWebhookEvents: [{ eventId: 'evt_seen', accountId: 'acct_x', eventType: 'x', processedAt: Date.now() }] };
+      assert.strictEqual(await isEventAlreadyProcessed({ db, supabaseAdminClient: null, eventId: 'evt_seen' }), true);
+      assert.strictEqual(await isEventAlreadyProcessed({ db, supabaseAdminClient: null, eventId: 'evt_never_seen' }), false);
+    });
+  });
 };
 
 if (require.main === module) {

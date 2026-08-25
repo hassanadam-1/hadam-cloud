@@ -288,6 +288,8 @@ async function initDb() {
   db.notifications = db.notifications || [];
   db.stockMovements = db.stockMovements || [];
   db.payments = db.payments || [];
+  db.tenantPaymentMethods = db.tenantPaymentMethods || [];
+  db.stripeWebhookEvents = db.stripeWebhookEvents || [];
   db.orderStatusHistory = db.orderStatusHistory || [];
   db.downloadProducts = db.downloadProducts || [];
   db.marketplaceMembers = db.marketplaceMembers || [];
@@ -986,6 +988,25 @@ function readBody(req) {
     req.on('error', reject);
   });
 }
+/** Reads the request body as raw text, WITHOUT JSON-parsing it. Required for
+ * Stripe webhook signature verification (stripe.webhooks.constructEvent),
+ * which needs the exact, byte-for-byte body Stripe signed — parsing and
+ * re-serializing it (as readBody() does) breaks the signature. Only routes
+ * that explicitly opt in via { rawBody: true } use this instead of the
+ * normal JSON body parser; every other route is completely unaffected. */
+function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    let tooLarge = false;
+    req.on('data', chunk => {
+      if (tooLarge) return;
+      data += chunk;
+      if (data.length > 30_000_000) { tooLarge = true; reject(Object.assign(new Error('Request body too large.'), { statusCode: 413 })); }
+    });
+    req.on('end', () => { if (tooLarge) return; resolve(data); });
+    req.on('error', reject);
+  });
+}
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff', // stops browsers guessing a different content-type than declared, a real MIME-sniffing attack vector
   'X-Frame-Options': 'DENY', // stops this site being embedded in an <iframe> elsewhere — the standard clickjacking defense
@@ -1020,6 +1041,17 @@ const AUTH_DRIVER = process.env.HADAM_AUTH_DRIVER || 'custom';
 const authSupabase = AUTH_DRIVER === 'supabase' ? require('./lib/auth') : null;
 const { logAuthEvent } = require('./lib/auditLog');
 const { createPayment: createPaymentRecord } = require('./lib/payments');
+const stripeConnectLib = require('./lib/stripeConnect');
+/** Lazily constructs the real Stripe client only if STRIPE_SECRET_KEY is
+ * actually configured — mirrors the existing pattern for RESEND_API_KEY:
+ * an unconfigured environment gets a clear error at the point of use,
+ * not a crash at startup, so the rest of the app keeps working. */
+let _stripeClient = null;
+function stripeClient() {
+  if (!process.env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY is not set.');
+  if (!_stripeClient) _stripeClient = require('stripe')(process.env.STRIPE_SECRET_KEY);
+  return _stripeClient;
+}
 const { supabaseAnon, supabaseForRequest, supabaseAdmin } = AUTH_DRIVER === 'supabase' ? require('./lib/supabaseClient') : {};
 
 /** Assembles the same {id, name, email, role, tenantId} shape the rest of
@@ -2426,6 +2458,87 @@ route('GET', '/api/config', { hostScope: 'any' }, async (req, res) => {
     supabaseUrl: AUTH_DRIVER === 'supabase' ? process.env.SUPABASE_URL : null,
     supabaseAnonKey: AUTH_DRIVER === 'supabase' ? process.env.SUPABASE_ANON_KEY : null,
   });
+});
+
+// ===========================================================================
+// PHASE 2 — STRIPE CONNECT. Local-driver implementation for now (this is
+// where the automated test suite runs); the Supabase-driver equivalent
+// follows the same shape against the `tenant_payment_methods` /
+// `stripe_webhook_events` tables built in db/schema.sql, using
+// supabaseAdmin() in place of the local `db` object throughout.
+// ===========================================================================
+
+function getTenantPaymentMethod(tenantId, method) {
+  return db.tenantPaymentMethods.find(m => m.tenantId === tenantId && m.method === method);
+}
+
+/** Starts (or resumes) Stripe onboarding for this store: creates a connected account if one doesn't exist yet, then returns a fresh onboarding link. Admin-only — enabling a payment method is a business decision, matching the RLS policy already built for this table. */
+route('POST', '/api/admin/stripe/connect', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
+  let record = getTenantPaymentMethod(tenant.id, 'stripe');
+  if (!record) {
+    record = { id: newId('tpm'), tenantId: tenant.id, method: 'stripe', enabled: false, stripeAccountId: null, stripeOnboardingStatus: 'not_connected' };
+    db.tenantPaymentMethods.push(record);
+  }
+  if (!record.stripeAccountId) {
+    record.stripeAccountId = await stripeConnectLib.createConnectedAccount({ stripe: stripeClient(), tenantId: tenant.id });
+    record.stripeOnboardingStatus = 'pending';
+    await persist();
+  }
+  const baseUrl = `https://${tenant.subdomain}.${BASE_DOMAIN}`;
+  const url = await stripeConnectLib.createOnboardingLink({
+    stripe: stripeClient(), stripeAccountId: record.stripeAccountId,
+    returnUrl: `${baseUrl}/admin/stripe/return`, refreshUrl: `${baseUrl}/admin/stripe/refresh`,
+  });
+  send(res, 200, { onboardingUrl: url, stripeAccountId: record.stripeAccountId });
+});
+
+/** Returns this store's current Stripe Connect status, straight from what's stored — the actual truth is only ever updated by the account.updated webhook below, never by this GET request itself. */
+route('GET', '/api/admin/stripe/status', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
+  const record = getTenantPaymentMethod(tenant.id, 'stripe');
+  send(res, 200, {
+    enabled: record ? record.enabled : false,
+    stripeAccountId: record ? record.stripeAccountId : null,
+    onboardingStatus: record ? record.stripeOnboardingStatus : 'not_connected',
+  });
+});
+
+/** Lets a store admin turn Stripe on/off as an accepted payment method — only once onboarding has actually completed (status: 'connected'), never before, regardless of what the client claims. */
+route('PATCH', '/api/admin/stripe/enable', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
+  const record = getTenantPaymentMethod(tenant.id, 'stripe');
+  if (!record || record.stripeOnboardingStatus !== 'connected') return send(res, 400, { error: 'Stripe onboarding must be completed before it can be enabled.' });
+  record.enabled = !!body.enabled;
+  await persist();
+  send(res, 200, { enabled: record.enabled });
+});
+
+/** The Stripe Connect webhook endpoint. Platform-level (hostScope: 'any') since Stripe calls one fixed URL regardless of which connected account an event is for — event.account in the verified payload, never anything host- or client-supplied, is what identifies the tenant. rawBody: true is essential here — see readRawBody's own comment for why. */
+route('POST', '/api/webhooks/stripe', { hostScope: 'any', rawBody: true }, async (req, res, params, body) => {
+  const signature = req.headers['stripe-signature'];
+  if (!signature) return send(res, 400, { error: 'Missing Stripe-Signature header.' });
+  if (!process.env.STRIPE_WEBHOOK_SECRET) return send(res, 500, { error: 'Webhook secret not configured.' });
+
+  let event;
+  try {
+    event = stripeConnectLib.verifyWebhookSignature({ stripe: stripeClient(), rawBody: body, signatureHeader: signature, webhookSecret: process.env.STRIPE_WEBHOOK_SECRET });
+  } catch (err) {
+    console.error('[stripe webhook] signature verification failed:', err.message);
+    return send(res, 400, { error: 'Invalid signature.' });
+  }
+
+  const result = await stripeConnectLib.processWebhookEvent({ db, supabaseAdminClient: null, event });
+
+  // account.updated needs the tenant lookup + tenant_payment_methods write
+  // that only this route (not lib/stripeConnect.js, which has no `db`
+  // access of its own) can perform.
+  if (result.processed && event.type === 'account.updated') {
+    const account = event.data.object;
+    const record = db.tenantPaymentMethods.find(m => m.stripeAccountId === account.id);
+    if (record) {
+      record.stripeOnboardingStatus = stripeConnectLib.mapAccountStatus(account);
+      await persist();
+    }
+  }
+  send(res, 200, { received: true });
 });
 
 // Uses MyMemory's free translation API (https://mymemory.translated.net) —
@@ -4817,7 +4930,7 @@ const server = http.createServer(async (req, res) => {
       if (user.email) captureRecipientLang(user.email, reqLang(req)); // fire-and-forget, see captureRecipientLang's own comment for why this exists
     }
     try {
-      const body = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method) ? await readBody(req) : {};
+      const body = r.opts.rawBody ? await readRawBody(req) : (['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method) ? await readBody(req) : {});
       await r.handler(req, res, params, body, url.searchParams, user, tenant, hostCtx);
     } catch (err) {
       console.error(err);
@@ -4845,4 +4958,4 @@ if (require.main === module) {
     setInterval(() => { checkDeliveryConfirmationReminders().catch(err => console.error('Delivery reminder check failed:', err)); }, 60 * 60 * 1000);
   })().catch(err => { console.error('Failed to start:', err); process.exit(1); });
 }
-module.exports = { server, initDb, resolveHost, hashPassword, verifyPassword, signToken, verifyToken, refreshItemStatus, DB_PATH, SEED_PATH };
+module.exports = { server, initDb, resolveHost, hashPassword, verifyPassword, signToken, verifyToken, refreshItemStatus, DB_PATH, SEED_PATH, getDb: () => db };

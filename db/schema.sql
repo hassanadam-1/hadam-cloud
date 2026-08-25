@@ -492,6 +492,34 @@ create table tenant_payment_methods (
 create unique index idx_tenant_payment_methods_unique on tenant_payment_methods (tenant_id, method);
 alter table tenant_payment_methods enable row level security;
 
+-- Phase 2: Stripe Connect fields. stripe_account_id (e.g. 'acct_1AbC...') is
+-- Stripe's own PUBLIC identifier for the connected account — not a secret,
+-- safe in a normal row, same as a Stripe customer ID would be. No Stripe
+-- secret key or OAuth token is ever stored here or anywhere else in this
+-- database; those live only in environment variables at the application
+-- layer, exactly like JWT_SECRET and RESEND_API_KEY already do.
+alter table tenant_payment_methods add column stripe_account_id text;
+alter table tenant_payment_methods add column stripe_onboarding_status text
+  check (stripe_onboarding_status in ('not_connected', 'pending', 'connected', 'restricted'));
+
+-- Dedicated webhook-event idempotency, keyed on Stripe's OWN event.id — the
+-- correct webhook-level identifier, distinct from payments.idempotency_key
+-- (which guards against duplicate PAYMENT records, not duplicate webhook
+-- DELIVERIES of the same event). Stripe redelivers events on retry/timeout,
+-- and this table is what makes reprocessing the same event.id a safe no-op.
+create table stripe_webhook_events (
+  event_id      text primary key,
+  account_id    text,
+  event_type    text not null,
+  processed_at  timestamptz not null default now()
+);
+alter table stripe_webhook_events enable row level security;
+-- No one needs to read this table via the normal client/RLS surface at all
+-- — it exists purely as an internal dedupe ledger the server-side webhook
+-- handler writes to using the service-role key. Deliberately no policies:
+-- RLS with zero policies denies all access by default, which is exactly
+-- what's wanted here.
+
 create table order_items (
   id                    uuid primary key default gen_random_uuid(),
   order_id              uuid not null references orders (id) on delete cascade,
