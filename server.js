@@ -287,6 +287,7 @@ async function initDb() {
   db.platformMessages = db.platformMessages || [];
   db.notifications = db.notifications || [];
   db.stockMovements = db.stockMovements || [];
+  db.payments = db.payments || [];
   db.orderStatusHistory = db.orderStatusHistory || [];
   db.downloadProducts = db.downloadProducts || [];
   db.marketplaceMembers = db.marketplaceMembers || [];
@@ -1018,6 +1019,7 @@ const { sendEmail: sendRealEmail, wrapEmailHtml, EMAIL_I18N, emailT } = require(
 const AUTH_DRIVER = process.env.HADAM_AUTH_DRIVER || 'custom';
 const authSupabase = AUTH_DRIVER === 'supabase' ? require('./lib/auth') : null;
 const { logAuthEvent } = require('./lib/auditLog');
+const { createPayment: createPaymentRecord } = require('./lib/payments');
 const { supabaseAnon, supabaseForRequest, supabaseAdmin } = AUTH_DRIVER === 'supabase' ? require('./lib/supabaseClient') : {};
 
 /** Assembles the same {id, name, email, role, tenantId} shape the rest of
@@ -2646,6 +2648,17 @@ route('POST', '/api/orders', { hostScope: 'tenant', auth: true, roles: ['client'
       for (const undo of decremented) await client.rpc('adjust_product_stock', { p_product_id: undo.productId, p_tenant_id: tenant.id, p_change: undo.qty, p_reason: 'manual_adjustment' });
       return send(res, 500, { error: apiT('orderCreationFailed', reqLang(req)) });
     }
+    // Phase 1 payment abstraction: additively record this checkout in the
+    // new, provider-independent payments table alongside the existing
+    // orders.payment_status column (left completely untouched above).
+    // Best-effort and non-blocking — this table isn't load-bearing yet,
+    // so a failure here must never break the working checkout flow.
+    try {
+      await createPaymentRecord({
+        supabaseAdminClient: supabaseAdmin(), tenantId: tenant.id, orderId: orderRow.id, clientId: user.id,
+        method: 'simulated', status: paymentSucceeded ? 'paid' : 'failed', amount: total, currency: 'usd',
+      });
+    } catch (e) { console.error('[payments] failed to record Phase 1 payment row:', e.message); }
     const itemRows = resolved.map(r => {
       const base = {
         order_id: orderRow.id, tenant_id: tenant.id, product_id: r.product.id, name: r.product.name, sku: r.product.sku || null,
@@ -2789,6 +2802,12 @@ route('POST', '/api/orders', { hostScope: 'tenant', auth: true, roles: ['client'
     try { await sendRealEmail({ to: user.email, subject: confirmSubject, text: confirmBody, html: wrapEmailHtml(confirmBody, orderLang) }); } catch { /* best-effort — the notifications row above is the record of truth */ }
   }
   db.orders.push(order);
+  try {
+    await createPaymentRecord({
+      db, supabaseAdminClient: null, tenantId: tenant.id, orderId: order.id, clientId: user.id,
+      method: 'simulated', status: paymentSucceeded ? 'paid' : 'failed', amount: total, currency: 'usd',
+    });
+  } catch (e) { console.error('[payments] failed to record Phase 1 payment row:', e.message); }
   await persist();
   send(res, paymentSucceeded ? 201 : 402, { order: orderForClient(order) });
 });

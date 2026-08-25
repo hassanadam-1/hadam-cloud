@@ -80,6 +80,86 @@ module.exports = async function runUnitTests() {
       assert.strictEqual(item.status, 'pending');
     });
   });
+
+  await suite('Unit — Phase 1 payment abstraction (lib/payments.js)', async () => {
+    const { createPayment, transitionPaymentStatus, getPaymentsForOrder, assertTransitionAllowed } = require('../lib/payments');
+
+    await test('creates a payment record with the fields provided', async () => {
+      const db = { payments: [] };
+      const payment = await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'cash', status: 'pending', amount: 42.5, currency: 'usd' });
+      assert.strictEqual(payment.tenantId, 't-1');
+      assert.strictEqual(payment.method, 'cash');
+      assert.strictEqual(payment.status, 'pending');
+      assert.strictEqual(payment.amount, 42.5);
+      assert.strictEqual(db.payments.length, 1);
+    });
+
+    await test('rejects an invalid method', async () => {
+      const db = { payments: [] };
+      await assert.rejects(() => createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'venmo', amount: 10 }));
+    });
+
+    await test('rejects a negative amount', async () => {
+      const db = { payments: [] };
+      await assert.rejects(() => createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'cash', amount: -5 }));
+    });
+
+    await test('idempotency key returns the existing record instead of creating a duplicate', async () => {
+      const db = { payments: [] };
+      const first = await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'stripe', amount: 10, idempotencyKey: 'evt-123' });
+      const second = await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'stripe', amount: 10, idempotencyKey: 'evt-123' });
+      assert.strictEqual(first.id, second.id);
+      assert.strictEqual(db.payments.length, 1);
+    });
+
+    await test('a different idempotency key (or no key) creates a genuinely separate record', async () => {
+      const db = { payments: [] };
+      await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'stripe', amount: 10, idempotencyKey: 'evt-1' });
+      await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'stripe', amount: 10, idempotencyKey: 'evt-2' });
+      assert.strictEqual(db.payments.length, 2);
+    });
+
+    await test('valid transitions succeed: pending -> paid -> refunded', async () => {
+      const db = { payments: [] };
+      const payment = await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'bank_transfer', amount: 10, status: 'pending' });
+      await transitionPaymentStatus({ db, supabaseAdminClient: null, paymentId: payment.id, newStatus: 'paid' });
+      assert.strictEqual(db.payments[0].status, 'paid');
+      await transitionPaymentStatus({ db, supabaseAdminClient: null, paymentId: payment.id, newStatus: 'refunded' });
+      assert.strictEqual(db.payments[0].status, 'refunded');
+    });
+
+    await test('illegal transitions are rejected: paid -> pending', async () => {
+      const db = { payments: [] };
+      const payment = await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'cash', amount: 10, status: 'paid' });
+      await assert.rejects(() => transitionPaymentStatus({ db, supabaseAdminClient: null, paymentId: payment.id, newStatus: 'pending' }));
+    });
+
+    await test('illegal transitions are rejected: failed -> paid', async () => {
+      const db = { payments: [] };
+      const payment = await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'cash', amount: 10, status: 'failed' });
+      await assert.rejects(() => transitionPaymentStatus({ db, supabaseAdminClient: null, paymentId: payment.id, newStatus: 'paid' }));
+    });
+
+    await test('a refunded payment cannot be transitioned further at all', async () => {
+      const db = { payments: [] };
+      const payment = await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'cash', amount: 10, status: 'refunded' });
+      await assert.rejects(() => transitionPaymentStatus({ db, supabaseAdminClient: null, paymentId: payment.id, newStatus: 'paid' }));
+      await assert.rejects(() => transitionPaymentStatus({ db, supabaseAdminClient: null, paymentId: payment.id, newStatus: 'pending' }));
+    });
+
+    await test('partially_refunded can move to a final full refund', () => {
+      assert.doesNotThrow(() => assertTransitionAllowed('partially_refunded', 'refunded'));
+    });
+
+    await test('getPaymentsForOrder returns only that order\'s payments, in creation order', async () => {
+      const db = { payments: [] };
+      await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'cash', amount: 10 });
+      await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-2', clientId: 'c-1', method: 'cash', amount: 20 });
+      const forOrder1 = await getPaymentsForOrder({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1' });
+      assert.strictEqual(forOrder1.length, 1);
+      assert.strictEqual(forOrder1[0].orderId, 'o-1');
+    });
+  });
 };
 
 if (require.main === module) {

@@ -2505,4 +2505,42 @@ module.exports = async function runApiTests(port) {
       await call('localhost', `/api/platform/tenants/${demo.id}`, { method: 'PATCH', headers: { Authorization: `Bearer ${login.token}` }, body: JSON.stringify({ status: 'active' }) });
     });
   });
+
+  await suite('Integration — Phase 1 payment abstraction is genuinely wired into real checkout', async () => {
+    await test('a successful checkout creates a matching payments record (method: simulated, status: paid)', async () => {
+      const sub = 'payphase1-' + uniq();
+      const { body: tenant } = await call('localhost', '/api/platform/tenants', { method: 'POST', body: JSON.stringify({ subdomain: sub, storeName: 'Payments Phase 1 Store', adminName: 'Admin', adminEmail: `payphase1-admin-${uniq()}@test.dev`, adminPassword: 'password123', plan: 'store' }) });
+      const { body: cat } = await call(`${sub}.localhost`, '/api/admin/categories', { method: 'POST', headers: { Authorization: `Bearer ${tenant.token}` }, body: JSON.stringify({ name: 'Manual Items', group: 'other', fulfillment: 'manual' }) });
+      const { body: prod } = await call(`${sub}.localhost`, '/api/admin/products', { method: 'POST', headers: { Authorization: `Bearer ${tenant.token}` }, body: JSON.stringify({ name: 'Test Widget', price: 19.99, categoryId: cat.category.id }) });
+      const { body: reg } = await call(`${sub}.localhost`, '/api/auth/register', { method: 'POST', body: JSON.stringify({ name: 'Pay Test Customer', email: `payphase1-client-${uniq()}@test.dev`, password: 'password123' }) });
+      const { status: checkoutStatus } = await call(`${sub}.localhost`, '/api/orders', { method: 'POST', headers: { Authorization: `Bearer ${reg.token}` }, body: JSON.stringify({ items: [{ productId: prod.product.id, qty: 1 }], card: { number: '4111111111111111', expiry: '12/30', cvv: '123', holderName: 'Pay Test' } }) });
+      assert.strictEqual(checkoutStatus, 201);
+
+      const { DB_PATH } = require('../server');
+      const fs = require('fs');
+      const persisted = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+      const payment = (persisted.payments || []).find(p => p.tenantId === tenant.tenant.id);
+      assert.ok(payment, 'no payments record was created for this checkout');
+      assert.strictEqual(payment.method, 'simulated');
+      assert.strictEqual(payment.status, 'paid');
+      assert.strictEqual(payment.amount, 19.99);
+    });
+
+    await test('a declined (all-zero card) checkout creates a payments record with status failed, not paid', async () => {
+      const sub = 'payphase1b-' + uniq();
+      const { body: tenant } = await call('localhost', '/api/platform/tenants', { method: 'POST', body: JSON.stringify({ subdomain: sub, storeName: 'Payments Phase 1 Store B', adminName: 'Admin', adminEmail: `payphase1b-admin-${uniq()}@test.dev`, adminPassword: 'password123', plan: 'store' }) });
+      const { body: cat } = await call(`${sub}.localhost`, '/api/admin/categories', { method: 'POST', headers: { Authorization: `Bearer ${tenant.token}` }, body: JSON.stringify({ name: 'Manual Items', group: 'other', fulfillment: 'manual' }) });
+      const { body: prod } = await call(`${sub}.localhost`, '/api/admin/products', { method: 'POST', headers: { Authorization: `Bearer ${tenant.token}` }, body: JSON.stringify({ name: 'Test Widget', price: 9.5, categoryId: cat.category.id }) });
+      const { body: reg } = await call(`${sub}.localhost`, '/api/auth/register', { method: 'POST', body: JSON.stringify({ name: 'Pay Test Customer B', email: `payphase1b-client-${uniq()}@test.dev`, password: 'password123' }) });
+      const { status: checkoutStatus } = await call(`${sub}.localhost`, '/api/orders', { method: 'POST', headers: { Authorization: `Bearer ${reg.token}` }, body: JSON.stringify({ items: [{ productId: prod.product.id, qty: 1 }], card: { number: '0000000000000000', expiry: '12/30', cvv: '123', holderName: 'Pay Test' } }) });
+      assert.strictEqual(checkoutStatus, 402);
+
+      const { DB_PATH } = require('../server');
+      const fs = require('fs');
+      const persisted = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+      const payment = (persisted.payments || []).find(p => p.tenantId === tenant.tenant.id);
+      assert.ok(payment, 'no payments record was created for this declined checkout');
+      assert.strictEqual(payment.status, 'failed');
+    });
+  });
 };

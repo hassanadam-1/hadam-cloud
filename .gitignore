@@ -1,10 +1,19 @@
+# Dependencies — always regenerated from package-lock.json via `npm install`.
+# Committing this bloats the repo massively and causes needless merge
+# conflicts; found committed (725 files) during the deployment-readiness
+# audit and removed.
 node_modules/
+
+# Local runtime data / secrets — never belong in version control.
 data/db.json
 .env
 .env.local
 my-supabase-keys.sh
 hadam-backup-codes.txt
-hadam-backup-codes*.txt
+
+# Stray debug/one-off scripts accumulated across many earlier sessions —
+# not part of the actual application, found committed during the
+# deployment-readiness audit.
 apply-*.js
 check-*.js
 watch-and-simulate-webhook.js
@@ -19,12 +28,20 @@ test-webhook-duplicate-prevention.js
 email.js
 download.txt
 server.js.bak-*
+
+# Large third-party binaries that don't belong in the repo at all.
 cloudflared.exe
 cloudflared.log
+
+# Personal/planning documents — not application code.
 project materials/
+
+# Deployment artifacts / stray extracted copies.
 hadam-cloud/
 hadam-cloud.zip
 hadam-cloud*.zip
+
+# OS/editor artifacts.
 .DS_Store
 Thumbs.db
 *.tmp

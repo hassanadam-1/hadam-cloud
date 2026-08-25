@@ -247,6 +247,11 @@ create table categories (
   created_at             timestamptz not null default now()
 );
 create index idx_categories_tenant on categories (tenant_id);
+-- Enforces "category names must be unique per store, regardless of
+-- capitalization or spacing" at the database level, not just in
+-- application code — protects against race conditions, concurrent
+-- requests, and any future code path that bypasses the app-layer check.
+create unique index if not exists categories_tenant_name_unique on categories (tenant_id, lower(trim(name)));
 
 -- -------------------------------------------------------------------------
 -- PRODUCTS
@@ -407,6 +412,85 @@ create table order_status_history (
   changed_at  timestamptz not null default now()
 );
 create index idx_order_status_history_order on order_status_history (order_id);
+
+-- =========================================================================
+-- PAYMENTS — Phase 1 of the multi-provider payment architecture. This is
+-- deliberately ADDITIVE: orders.payment_status and its existing
+-- 'success'/'failed' values are UNTOUCHED, so the current simulated
+-- checkout flow keeps working exactly as before. This table exists
+-- alongside it as the provider-independent model that Stripe, PayPal,
+-- bank transfer, and cash will all write into in later phases — none of
+-- those providers are wired up yet; this phase only builds the foundation
+-- and proves it with automated tests.
+--
+-- One order can have more than one payment row over its lifetime (e.g. an
+-- initial authorization, then a later capture; or a failed attempt
+-- followed by a successful retry) — the CURRENT state of an order's
+-- payment is whichever row is most recent, not a 1:1 relationship.
+-- =========================================================================
+create table payments (
+  id                    uuid primary key default gen_random_uuid(),
+  tenant_id             uuid not null references tenants (id) on delete cascade,
+  order_id              uuid not null references orders (id) on delete cascade,
+  client_id             uuid not null references auth.users (id) on delete restrict,
+  method                text not null check (method in ('stripe', 'paypal', 'bank_transfer', 'cash', 'simulated')),
+  status                text not null default 'pending' check (status in ('pending', 'authorized', 'paid', 'failed', 'cancelled', 'refunded', 'partially_refunded')),
+  amount                numeric(10, 2) not null,
+  currency              text not null default 'usd',
+  -- The provider's own identifier for this transaction (Stripe PaymentIntent
+  -- ID, PayPal order ID, a staff-entered bank reference, etc.) — null for
+  -- methods that have none yet (e.g. cash before staff confirms it).
+  provider_reference    text,
+  -- Prevents the same external event (e.g. a webhook retried by the
+  -- provider, or a double-submitted request) from creating two payment
+  -- records for what is really one transaction. Callers generate this
+  -- once per real-world payment attempt and always pass the same value
+  -- on retry.
+  idempotency_key       text,
+  -- Free-form, provider-specific detail that doesn't warrant its own
+  -- column (e.g. card brand/last4, PayPal payer email, staff note for a
+  -- manually-confirmed bank transfer). Never a place for secrets.
+  metadata              jsonb not null default '{}'::jsonb,
+  -- Who took the action that produced this row, for methods requiring
+  -- staff judgement (bank transfer, cash) rather than an automatic
+  -- provider callback. Null for provider-driven methods.
+  confirmed_by          uuid references auth.users (id) on delete set null,
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now()
+);
+create index idx_payments_tenant on payments (tenant_id);
+create index idx_payments_order on payments (order_id);
+-- Enforces the idempotency guarantee described above: the same
+-- (tenant, method, idempotency_key) combination can only ever produce one
+-- row. Partial index — most methods (cash, a first bank-transfer
+-- instruction) never supply a key at all, and NULL never collides with
+-- NULL under a unique index, so this only activates once a real key is
+-- actually provided.
+create unique index idx_payments_idempotency on payments (tenant_id, method, idempotency_key) where idempotency_key is not null;
+alter table payments enable row level security;
+
+-- One row per (tenant, method) — which payment methods a store has
+-- turned on, and any NON-SECRET configuration each needs (e.g. a PayPal
+-- receiving email, or bank-transfer instructions text shown to the
+-- customer). Real provider secrets (a Stripe secret key, a PayPal client
+-- secret) must NEVER be stored here or in any other database row readable
+-- by normal queries — those belong in environment variables or a proper
+-- secrets manager, scoped per-tenant at the application layer, exactly
+-- like JWT_SECRET and RESEND_API_KEY already are for the platform itself.
+-- This table is intentionally silent on how per-tenant provider secrets
+-- are stored; that is decided when each provider is actually implemented
+-- (Phase 2 onward), not here.
+create table tenant_payment_methods (
+  id            uuid primary key default gen_random_uuid(),
+  tenant_id     uuid not null references tenants (id) on delete cascade,
+  method        text not null check (method in ('stripe', 'paypal', 'bank_transfer', 'cash', 'simulated')),
+  enabled       boolean not null default false,
+  config        jsonb not null default '{}'::jsonb, -- non-secret only, see comment above
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+create unique index idx_tenant_payment_methods_unique on tenant_payment_methods (tenant_id, method);
+alter table tenant_payment_methods enable row level security;
 
 create table order_items (
   id                    uuid primary key default gen_random_uuid(),
@@ -667,6 +751,29 @@ create policy client_creates_own_order_items on order_items for insert
   with check (exists (select 1 from orders o where o.id = order_items.order_id and o.client_id = auth.uid()));
 create policy staff_updates_order_items on order_items for update
   using (is_tenant_staff(tenant_id)); -- fulfillment status changes, refunds
+
+-- PAYMENTS: same visibility shape as orders — a client sees only their own
+-- payment records; staff see every payment at their own store. Only staff
+-- can insert/update — even for a client-initiated method like a card
+-- payment, the record of whether it actually succeeded is something the
+-- server decides (via the simulated check today, a real provider
+-- callback/webhook later), never something the client's own request can
+-- assert directly.
+create policy read_own_or_staff_payments on payments for select
+  using (client_id = auth.uid() or is_tenant_staff(tenant_id) or is_superadmin());
+create policy staff_creates_payments on payments for insert
+  with check (is_tenant_staff(tenant_id));
+create policy staff_updates_payments on payments for update
+  using (is_tenant_staff(tenant_id));
+
+-- TENANT PAYMENT METHODS: only that store's own admin (or superadmin) can
+-- view or change which payment methods are enabled and their non-secret
+-- configuration. Deliberately admin-only, not staff-wide — enabling a
+-- payment method is a business decision, not a day-to-day fulfillment
+-- action like an employee's other duties.
+create policy admin_manages_payment_methods on tenant_payment_methods for all
+  using (is_tenant_admin(tenant_id) or is_superadmin())
+  with check (is_tenant_admin(tenant_id) or is_superadmin());
 -- A client can flag their own item for a refund request (request-refund route
 -- only ever sends {refund_requested: true} for this — actually granting the
 -- refund itself still requires staff, via the policy above).
