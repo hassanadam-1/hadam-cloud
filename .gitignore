@@ -46,3 +46,6 @@ hadam-cloud*.zip
 Thumbs.db
 *.tmp
 ~$*
+data/uploads/
+Login backup codes/
+hadam-backup-codes*.txt
