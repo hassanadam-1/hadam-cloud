@@ -2757,6 +2757,22 @@ module.exports = async function runApiTests(port) {
       const stockAfter = findProductStock(dbRef, prod.product.id);
       assert.strictEqual(stockAfter, 5, 'stock must NOT be decremented for a failed payment');
     });
+
+    await test('GET /api/payment-methods (public) correctly reports stripeEnabled: false before onboarding, and true once connected+enabled', async () => {
+      const sub = 'paymethods-' + uniq();
+      const { body: tenant } = await call('localhost', '/api/platform/tenants', { method: 'POST', body: JSON.stringify({ subdomain: sub, storeName: 'Pay Methods Store', adminName: 'Admin', adminEmail: `${sub}-admin-${uniq()}@test.dev`, adminPassword: 'password123', plan: 'store' }) });
+      const before = await call(`${sub}.localhost`, '/api/payment-methods');
+      assert.strictEqual(before.body.stripeEnabled, false);
+
+      const { getDb } = require('../server');
+      const dbRef = getDb();
+      dbRef.tenantPaymentMethods.push({ id: 'tpm-' + uniq(), tenantId: tenant.tenant.id, method: 'stripe', enabled: true, stripeAccountId: 'acct_fake', stripeOnboardingStatus: 'connected' });
+      const after = await call(`${sub}.localhost`, '/api/payment-methods');
+      assert.strictEqual(after.body.stripeEnabled, true);
+      // Confirm nothing sensitive leaks through this public endpoint.
+      assert.strictEqual(after.body.stripeAccountId, undefined);
+      assert.strictEqual(after.body.onboardingStatus, undefined);
+    });
   });
 
   function findProductStock(dbRef, productId) {

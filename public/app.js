@@ -141,7 +141,7 @@ const I18N = {
     planChangeGenericWarning: "Change your store's plan? This takes effect immediately.", savedMsg: 'Saved.',
     planLabelForm: 'Plan', employeeRoleOpt: 'Employee', adminRoleOpt: 'Admin',
     refundRequestedStatus: 'Refund requested', requestRefundBtn: 'Request refund',
-    stripePaymentsH3: 'Stripe payments', stripeIntroText: 'Connect your own Stripe account to accept card payments directly \u2014 customer payments go straight to your account, not through Hadam.', stripeConnectBtn: 'Connect Stripe', stripeContinueOnboardingBtn: 'Continue Stripe setup', stripeEnableAsPaymentMethod: 'Accept Stripe payments in this store', stripeStatus_not_connected: 'Not connected', stripeStatus_pending: 'Setup incomplete', stripeStatus_connected: 'Connected', stripeStatus_restricted: 'Action needed', stripeNotConnectedHint: 'Connect a Stripe account to start accepting card payments.', stripePendingHint: "You've started connecting Stripe, but setup isn't finished yet \u2014 continue where you left off.", stripeConnectedHint: 'Your Stripe account is fully connected and ready to accept payments.', stripeRestrictedHint: 'Stripe needs more information from you before this account can accept payments \u2014 continuing setup will show what\u2019s required.', stripeReturnMsg: "Welcome back \u2014 we're checking your Stripe connection status.", stripeRefreshMsg: 'That Stripe setup link expired. Click below to get a new one.',
+    stripePaymentsH3: 'Stripe payments', stripeIntroText: 'Connect your own Stripe account to accept card payments directly \u2014 customer payments go straight to your account, not through Hadam.', stripeConnectBtn: 'Connect Stripe', stripeContinueOnboardingBtn: 'Continue Stripe setup', stripeEnableAsPaymentMethod: 'Accept Stripe payments in this store', stripeStatus_not_connected: 'Not connected', stripeStatus_pending: 'Setup incomplete', stripeStatus_connected: 'Connected', stripeStatus_restricted: 'Action needed', stripeNotConnectedHint: 'Connect a Stripe account to start accepting card payments.', stripePendingHint: "You've started connecting Stripe, but setup isn't finished yet \u2014 continue where you left off.", stripeConnectedHint: 'Your Stripe account is fully connected and ready to accept payments.', stripeRestrictedHint: 'Stripe needs more information from you before this account can accept payments \u2014 continuing setup will show what\u2019s required.', stripeReturnMsg: "Welcome back \u2014 we're checking your Stripe connection status.", stripeRefreshMsg: 'That Stripe setup link expired. Click below to get a new one.', orPaySimulated: 'Or use the simulated test payment below:', stripePaymentSubmittedMsg: 'Payment submitted — confirming with Stripe now.',
     storeDetailsH3: 'Store details',
     alreadyDownloadedLabel: 'Downloaded', noRefundAfterDownloadHint: 'Not eligible for refund — this digital product has already been downloaded.',
     languageCodeLabel: 'Language code', maxDownloadsLabel: 'Max downloads', descriptionLabel: 'Description',
@@ -366,7 +366,7 @@ const I18N = {
     planChangeGenericWarning: 'تغيير خطة متجرك؟ يسري هذا فورًا.', savedMsg: 'تم الحفظ.',
     planLabelForm: 'الخطة', employeeRoleOpt: 'موظف', adminRoleOpt: 'مسؤول',
     refundRequestedStatus: 'تم طلب الاسترداد', requestRefundBtn: 'طلب استرداد',
-    stripePaymentsH3: 'مدفوعات Stripe', stripeIntroText: 'اربط حساب Stripe الخاص بك لقبول المدفوعات بالبطاقة مباشرة — تذهب مدفوعات العملاء إلى حسابك مباشرة، وليس عبر هدام.', stripeConnectBtn: 'ربط Stripe', stripeContinueOnboardingBtn: 'متابعة إعداد Stripe', stripeEnableAsPaymentMethod: 'قبول مدفوعات Stripe في هذا المتجر', stripeStatus_not_connected: 'غير مرتبط', stripeStatus_pending: 'الإعداد غير مكتمل', stripeStatus_connected: 'مرتبط', stripeStatus_restricted: 'يتطلب إجراء', stripeNotConnectedHint: 'اربط حساب Stripe لبدء قبول المدفوعات بالبطاقة.', stripePendingHint: 'بدأت في ربط Stripe، لكن الإعداد لم يكتمل بعد — تابع من حيث توقفت.', stripeConnectedHint: 'حساب Stripe الخاص بك مرتبط بالكامل وجاهز لقبول المدفوعات.', stripeRestrictedHint: 'يحتاج Stripe إلى مزيد من المعلومات منك قبل أن يتمكن هذا الحساب من قبول المدفوعات — متابعة الإعداد ستُظهر ما هو مطلوب.', stripeReturnMsg: 'مرحبًا بعودتك — نتحقق من حالة اتصال Stripe الخاص بك.', stripeRefreshMsg: 'انتهت صلاحية رابط إعداد Stripe هذا. انقر أدناه للحصول على رابط جديد.',
+    stripePaymentsH3: 'مدفوعات Stripe', stripeIntroText: 'اربط حساب Stripe الخاص بك لقبول المدفوعات بالبطاقة مباشرة — تذهب مدفوعات العملاء إلى حسابك مباشرة، وليس عبر هدام.', stripeConnectBtn: 'ربط Stripe', stripeContinueOnboardingBtn: 'متابعة إعداد Stripe', stripeEnableAsPaymentMethod: 'قبول مدفوعات Stripe في هذا المتجر', stripeStatus_not_connected: 'غير مرتبط', stripeStatus_pending: 'الإعداد غير مكتمل', stripeStatus_connected: 'مرتبط', stripeStatus_restricted: 'يتطلب إجراء', stripeNotConnectedHint: 'اربط حساب Stripe لبدء قبول المدفوعات بالبطاقة.', stripePendingHint: 'بدأت في ربط Stripe، لكن الإعداد لم يكتمل بعد — تابع من حيث توقفت.', stripeConnectedHint: 'حساب Stripe الخاص بك مرتبط بالكامل وجاهز لقبول المدفوعات.', stripeRestrictedHint: 'يحتاج Stripe إلى مزيد من المعلومات منك قبل أن يتمكن هذا الحساب من قبول المدفوعات — متابعة الإعداد ستُظهر ما هو مطلوب.', stripeReturnMsg: 'مرحبًا بعودتك — نتحقق من حالة اتصال Stripe الخاص بك.', stripeRefreshMsg: 'انتهت صلاحية رابط إعداد Stripe هذا. انقر أدناه للحصول على رابط جديد.', orPaySimulated: 'أو استخدم الدفع التجريبي المحاكى أدناه:', stripePaymentSubmittedMsg: 'تم إرسال الدفعة — جارٍ التأكيد مع Stripe الآن.',
     storeDetailsH3: 'تفاصيل المتجر',
     alreadyDownloadedLabel: 'تم التنزيل', noRefundAfterDownloadHint: 'غير مؤهل للاسترداد — تم تنزيل هذا المنتج الرقمي بالفعل.',
     languageCodeLabel: 'رمز اللغة', maxDownloadsLabel: 'الحد الأقصى للتنزيلات', descriptionLabel: 'الوصف',
@@ -591,7 +591,7 @@ const I18N = {
     planChangeGenericWarning: "Changer l'offre de votre boutique ? Cela prend effet immédiatement.", savedMsg: 'Enregistré.',
     planLabelForm: 'Offre', employeeRoleOpt: 'Employé', adminRoleOpt: 'Admin',
     refundRequestedStatus: 'Remboursement demandé', requestRefundBtn: 'Demander un remboursement',
-    stripePaymentsH3: 'Paiements Stripe', stripeIntroText: 'Connectez votre propre compte Stripe pour accepter les paiements par carte directement — les paiements des clients vont directement sur votre compte, pas via Hadam.', stripeConnectBtn: 'Connecter Stripe', stripeContinueOnboardingBtn: 'Poursuivre la configuration Stripe', stripeEnableAsPaymentMethod: 'Accepter les paiements Stripe dans cette boutique', stripeStatus_not_connected: 'Non connecté', stripeStatus_pending: 'Configuration incomplète', stripeStatus_connected: 'Connecté', stripeStatus_restricted: 'Action requise', stripeNotConnectedHint: 'Connectez un compte Stripe pour commencer à accepter les paiements par carte.', stripePendingHint: "Vous avez commencé à connecter Stripe, mais la configuration n'est pas terminée — reprenez là où vous vous étiez arrêté.", stripeConnectedHint: 'Votre compte Stripe est entièrement connecté et prêt à accepter des paiements.', stripeRestrictedHint: 'Stripe a besoin de plus d\u2019informations avant que ce compte puisse accepter des paiements — poursuivre la configuration indiquera ce qui est requis.', stripeReturnMsg: 'Bon retour — nous vérifions le statut de votre connexion Stripe.', stripeRefreshMsg: 'Ce lien de configuration Stripe a expiré. Cliquez ci-dessous pour en obtenir un nouveau.',
+    stripePaymentsH3: 'Paiements Stripe', stripeIntroText: 'Connectez votre propre compte Stripe pour accepter les paiements par carte directement — les paiements des clients vont directement sur votre compte, pas via Hadam.', stripeConnectBtn: 'Connecter Stripe', stripeContinueOnboardingBtn: 'Poursuivre la configuration Stripe', stripeEnableAsPaymentMethod: 'Accepter les paiements Stripe dans cette boutique', stripeStatus_not_connected: 'Non connecté', stripeStatus_pending: 'Configuration incomplète', stripeStatus_connected: 'Connecté', stripeStatus_restricted: 'Action requise', stripeNotConnectedHint: 'Connectez un compte Stripe pour commencer à accepter les paiements par carte.', stripePendingHint: "Vous avez commencé à connecter Stripe, mais la configuration n'est pas terminée — reprenez là où vous vous étiez arrêté.", stripeConnectedHint: 'Votre compte Stripe est entièrement connecté et prêt à accepter des paiements.', stripeRestrictedHint: 'Stripe a besoin de plus d\u2019informations avant que ce compte puisse accepter des paiements — poursuivre la configuration indiquera ce qui est requis.', stripeReturnMsg: 'Bon retour — nous vérifions le statut de votre connexion Stripe.', stripeRefreshMsg: 'Ce lien de configuration Stripe a expiré. Cliquez ci-dessous pour en obtenir un nouveau.', orPaySimulated: 'Ou utilisez le paiement de test simulé ci-dessous :', stripePaymentSubmittedMsg: 'Paiement soumis — confirmation avec Stripe en cours.',
     storeDetailsH3: 'Détails de la boutique',
     alreadyDownloadedLabel: 'Téléchargé', noRefundAfterDownloadHint: 'Non éligible au remboursement — ce produit numérique a déjà été téléchargé.',
     languageCodeLabel: 'Code de langue', maxDownloadsLabel: 'Téléchargements max', descriptionLabel: 'Description',
@@ -1431,7 +1431,7 @@ function setQty(id, value) {
 function cartLines() {
   return state.cart.map(l => ({ ...l, product: state.products.find(p => p.id === l.productId) }));
 }
-function renderCart() {
+async function renderCart() {
   const el = document.getElementById('cartContent');
   const lines = cartLines();
   if (lines.length === 0) { el.innerHTML = `<div class="empty">${t('emptyCart')} <a href="#" onclick="go('home');return false;" style="color:var(--accent)">${t('browseCatalog')}</a>.</div>`; return; }
@@ -1464,6 +1464,8 @@ function renderCart() {
     return;
   }
 
+  const paymentMethods = await api('/api/payment-methods').catch(() => ({ stripeEnabled: false }));
+
   el.innerHTML = itemsHtml + `
     <div class="panel">
       <h3>${t('checkout')}</h3>
@@ -1477,6 +1479,14 @@ function renderCart() {
         </div>
         <div id="shipAddrWrap" class="field"><label>${t('shippingAddress')}${helpIcon('shipAddr', { what: 'helpShipAddrWhat', why: 'helpShipAddrWhy', next: 'helpShipAddrNext' })}</label><textarea id="shipAddr" rows="2" placeholder="${t('shippingAddressPlaceholder') || 'Street, city, postcode'}"></textarea></div>
       ` : `<div class="field"><label>${t('shippingAddress')}${helpIcon('shipAddr', { what: 'helpShipAddrWhat', why: 'helpShipAddrWhy', next: 'helpShipAddrNext' })}</label><textarea id="shipAddr" rows="2" placeholder="${t('shippingAddressPlaceholder') || 'Street, city, postcode'}"></textarea></div>`) : ''}
+      ${paymentMethods.stripeEnabled ? `
+      <div id="stripePaymentPanel" style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;">
+        <div id="stripeElementsMount"></div>
+        <button class="btn full" id="stripePayBtn" onclick="payWithStripe()" style="margin-top:10px;">${t('pay')} $${total.toFixed(2)} (Stripe)</button>
+        <div id="stripeCheckoutMsg"></div>
+      </div>
+      <div class="hint" style="margin-bottom:10px;">${t('orPaySimulated') || 'Or use the simulated test payment below:'}</div>
+      ` : ''}
       <div class="field"><label>${t('cardNumber')}${helpIcon('checkoutCard', { what: 'helpCheckoutCardWhat', why: 'helpCheckoutCardWhy', next: 'helpCheckoutCardNext', rules: 'helpCheckoutCardRules', errors: 'helpCheckoutCardErrors' })}</label><input id="cardNum" dir="ltr" placeholder="4111 1111 1111 1111" maxlength="19"></div>
       <div class="row2">
         <div class="field"><label>${t('expiry')}</label><input id="cardExp" dir="ltr" placeholder="MM/YY"></div>
@@ -1488,6 +1498,46 @@ function renderCart() {
       <div class="hint">Simulated payment provider. Use <code>4111 1111 1111 1111</code> for success or <code>0000 0000 0000 0000</code> to preview a decline.</div>
     </div>`;
   wireCardFieldValidation('');
+  if (paymentMethods.stripeEnabled) initStripeCheckout(paymentMethods.publishableKey);
+}
+let _stripeElementsInstance = null;
+async function initStripeCheckout(publishableKey) {
+  const shipAddrEl = document.getElementById('shipAddr');
+  const deliveryEl = document.getElementById('deliveryMethod');
+  const items = state.cart.map(c => ({ productId: c.productId, qty: c.qty }));
+  const msgEl = document.getElementById('stripeCheckoutMsg');
+  try {
+    const { clientSecret, orderId } = await api('/api/orders/stripe', { method: 'POST', body: JSON.stringify({ items, shippingAddress: shipAddrEl ? shipAddrEl.value : undefined, deliveryMethod: deliveryEl ? deliveryEl.value : undefined }) });
+    state._stripeOrderId = orderId;
+    if (!window.Stripe) await new Promise((resolve, reject) => { const s = document.createElement('script'); s.src = 'https://js.stripe.com/v3/'; s.onload = resolve; s.onerror = reject; document.head.appendChild(s); });
+    const stripe = window.Stripe(publishableKey);
+    _stripeElementsInstance = stripe.elements({ clientSecret });
+    const paymentElement = _stripeElementsInstance.create('payment');
+    paymentElement.mount('#stripeElementsMount');
+    state._stripeInstance = stripe;
+  } catch (e) {
+    if (msgEl) msgEl.innerHTML = `<div class="msg error">${esc(e.message)}</div>`;
+  }
+}
+async function payWithStripe() {
+  const btn = document.getElementById('stripePayBtn');
+  const msgEl = document.getElementById('stripeCheckoutMsg');
+  if (!state._stripeInstance || !_stripeElementsInstance) { msgEl.innerHTML = `<div class="msg error">Payment form did not load correctly — please refresh and try again.</div>`; return; }
+  btn.disabled = true;
+  try {
+    const { error } = await state._stripeInstance.confirmPayment({ elements: _stripeElementsInstance, redirect: 'if_required' });
+    if (error) { msgEl.innerHTML = `<div class="msg error">${esc(error.message)}</div>`; btn.disabled = false; return; }
+    // Confirmation succeeding here means Stripe accepted the card — but per
+    // the architecture's own core rule, this does NOT mean the order is
+    // paid yet. Only the verified webhook decides that. This message
+    // reflects that honestly rather than claiming success prematurely.
+    msgEl.innerHTML = `<div class="msg success">${t('stripePaymentSubmittedMsg') || 'Payment submitted — confirming with Stripe now.'}</div>`;
+    state.cart = [];
+    setTimeout(() => go('orders'), 1500);
+  } catch (e) {
+    msgEl.innerHTML = `<div class="msg error">${esc(e.message)}</div>`;
+    btn.disabled = false;
+  }
 }
 function toggleShipAddr() {
   const wrap = document.getElementById('shipAddrWrap');

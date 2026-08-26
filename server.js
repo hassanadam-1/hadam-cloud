@@ -2502,6 +2502,12 @@ route('GET', '/api/admin/stripe/status', { hostScope: 'tenant', auth: true, role
   });
 });
 
+/** Public, customer-facing: is Stripe an available checkout option for this store? Deliberately exposes nothing beyond a single boolean — no account ID, no onboarding status — matching how the product catalog itself is already public. */
+route('GET', '/api/payment-methods', { hostScope: 'tenant' }, async (req, res, params, body, query, user, tenant) => {
+  const record = getTenantPaymentMethod(tenant.id, 'stripe');
+  send(res, 200, { stripeEnabled: !!(record && record.enabled && record.stripeOnboardingStatus === 'connected'), publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null });
+});
+
 /** Lets a store admin turn Stripe on/off as an accepted payment method — only once onboarding has actually completed (status: 'connected'), never before, regardless of what the client claims. */
 route('PATCH', '/api/admin/stripe/enable', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
   const record = getTenantPaymentMethod(tenant.id, 'stripe');
