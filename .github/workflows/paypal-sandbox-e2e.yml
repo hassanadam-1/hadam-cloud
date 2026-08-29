@@ -23,19 +23,26 @@ name: PayPal Sandbox E2E (real API, no mocks)
 # below means anything. This workflow only ever READS that merchant's
 # state — it never performs onboarding itself.
 #
-# Deliberately NOT triggered on pull_request, for the same reasons as
-# email-integration.yml: secrets aren't exposed to fork PRs, and a real
-# external API call on every PR push is unnecessary noise for something
-# the existing 330+ mocked tests already exercise deterministically.
+# Manual trigger only (workflow_dispatch) — see the reasoning directly
+# above the `on:` block below. Not triggered on push or pull_request:
+# secrets aren't exposed to fork PRs regardless, and this workflow's
+# real sandbox order creation should be a deliberate action, not an
+# automatic side effect of ordinary development pushes.
 #
 # Secrets live in the "paypal-sandbox-e2e" GitHub Environment, letting
 # you require manual approval before a run can access them (Settings ->
 # Environments -> paypal-sandbox-e2e -> "Required reviewers"), scoped to
 # only this one job.
 on:
-  push:
-    branches: [main]
   workflow_dispatch: {}
+  # Deliberately NOT triggered on push. Unlike the mocked test suite,
+  # this workflow creates a REAL PayPal sandbox order on every run — an
+  # ordinary development push shouldn't generate sandbox transactions
+  # just because code changed elsewhere in the repo. Trigger manually
+  # from the Actions tab when you specifically want to re-verify the
+  # real sandbox integration (e.g. after changing anything in
+  # lib/paypalConnect.js, scripts/paypal-sandbox-e2e.js, or the
+  # sandbox merchant/app configuration itself).
 
 jobs:
   paypal-sandbox-e2e:
