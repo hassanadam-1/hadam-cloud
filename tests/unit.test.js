@@ -161,7 +161,7 @@ module.exports = async function runUnitTests() {
     });
   });
   await suite('Unit — Phase 2 Stripe Connect (lib/stripeConnect.js)', async () => {
-    const { mapAccountStatus, createConnectedAccount, createOnboardingLink, createPaymentIntent, processWebhookEvent, isEventAlreadyProcessed } = require('../lib/stripeConnect');
+    const { mapAccountStatus, createConnectedAccount, createOnboardingLink, createPaymentIntent, createRefund, processWebhookEvent, isEventAlreadyProcessed } = require('../lib/stripeConnect');
     const { createPayment } = require('../lib/payments');
 
     await test('mapAccountStatus: no account -> not_connected', () => {
@@ -209,6 +209,32 @@ module.exports = async function runUnitTests() {
       const fakeStripe = { paymentIntents: { create: async (params) => { captured = params; return { id: 'pi_fake123' }; } } };
       await createPaymentIntent({ stripe: fakeStripe, stripeAccountId: 'acct_fake123', amount: 10 });
       assert.strictEqual(captured.application_fee_amount, undefined);
+    });
+
+    await test('createRefund: full refund retrieves the charge and refunds it in full (no amount specified)', async () => {
+      let capturedRefundParams;
+      const fakeStripe = {
+        paymentIntents: { retrieve: async () => ({ latest_charge: 'ch_fake123' }) },
+        refunds: { create: async (params) => { capturedRefundParams = params; return { id: 're_fake123', status: 'succeeded' }; } },
+      };
+      await createRefund({ stripe: fakeStripe, paymentIntentId: 'pi_fake123' });
+      assert.strictEqual(capturedRefundParams.charge, 'ch_fake123');
+      assert.strictEqual(capturedRefundParams.amount, undefined, 'a full refund should not specify an amount at all');
+    });
+
+    await test('createRefund: partial refund converts dollars to cents correctly', async () => {
+      let capturedRefundParams;
+      const fakeStripe = {
+        paymentIntents: { retrieve: async () => ({ latest_charge: 'ch_fake123' }) },
+        refunds: { create: async (params) => { capturedRefundParams = params; return { id: 're_fake123' }; } },
+      };
+      await createRefund({ stripe: fakeStripe, paymentIntentId: 'pi_fake123', amount: 5.5 });
+      assert.strictEqual(capturedRefundParams.amount, 550);
+    });
+
+    await test('createRefund throws clearly if the PaymentIntent has no completed charge yet', async () => {
+      const fakeStripe = { paymentIntents: { retrieve: async () => ({ latest_charge: null }) } };
+      await assert.rejects(() => createRefund({ stripe: fakeStripe, paymentIntentId: 'pi_fake123' }));
     });
 
     await test('processWebhookEvent: payment_intent.succeeded transitions the payment to paid', async () => {
@@ -262,6 +288,133 @@ module.exports = async function runUnitTests() {
       const db = { stripeWebhookEvents: [{ eventId: 'evt_seen', accountId: 'acct_x', eventType: 'x', processedAt: Date.now() }] };
       assert.strictEqual(await isEventAlreadyProcessed({ db, supabaseAdminClient: null, eventId: 'evt_seen' }), true);
       assert.strictEqual(await isEventAlreadyProcessed({ db, supabaseAdminClient: null, eventId: 'evt_never_seen' }), false);
+    });
+  });
+
+  await suite('Unit — PayPal Connect (lib/paypalConnect.js)', async () => {
+    const {
+      mapMerchantStatus, createPartnerReferral, getMerchantStatus, createOrder, captureOrder, refundCapture,
+      verifyWebhookSignature, processWebhookEvent, isEventAlreadyProcessed: paypalEventProcessed,
+    } = require('../lib/paypalConnect');
+    const { createPayment } = require('../lib/payments');
+
+    await test('mapMerchantStatus: no status -> not_connected', () => {
+      assert.strictEqual(mapMerchantStatus(null), 'not_connected');
+    });
+    await test('mapMerchantStatus: payments_receivable + email confirmed -> connected', () => {
+      assert.strictEqual(mapMerchantStatus({ payments_receivable: true, primary_email_confirmed: true }), 'connected');
+    });
+    await test('mapMerchantStatus: no oauth permissions granted -> restricted', () => {
+      assert.strictEqual(mapMerchantStatus({ payments_receivable: false, primary_email_confirmed: false, oauth_third_party: [] }), 'restricted');
+    });
+    await test('mapMerchantStatus: incomplete, no restriction signal -> pending', () => {
+      assert.strictEqual(mapMerchantStatus({ payments_receivable: false, primary_email_confirmed: false }), 'pending');
+    });
+
+    await test('createPartnerReferral calls the correct endpoint and returns the action_url', async () => {
+      let captured;
+      const fakeCall = async (method, path, body) => { captured = { method, path, body }; return { links: [{ rel: 'self', href: 'https://x/self' }, { rel: 'action_url', href: 'https://paypal.com/onboard/abc' }] }; };
+      const url = await createPartnerReferral({ paypalApiCall: fakeCall, tenantId: 't-1', trackingId: 't-1', returnUrl: 'https://x/return' });
+      assert.strictEqual(url, 'https://paypal.com/onboard/abc');
+      assert.strictEqual(captured.method, 'POST');
+      assert.strictEqual(captured.path, '/v2/customer/partner-referrals');
+      assert.strictEqual(captured.body.products[0], 'EXPRESS_CHECKOUT');
+      assert.strictEqual(captured.body.partner_config_override.return_url, 'https://x/return');
+    });
+
+    await test('createPartnerReferral throws clearly if PayPal returns no action_url', async () => {
+      const fakeCall = async () => ({ links: [{ rel: 'self', href: 'https://x/self' }] });
+      await assert.rejects(() => createPartnerReferral({ paypalApiCall: fakeCall, tenantId: 't-1', trackingId: 't-1', returnUrl: 'https://x/return' }));
+    });
+
+    await test('getMerchantStatus calls the correct merchant-integrations endpoint and maps the result', async () => {
+      let capturedPath;
+      const fakeCall = async (method, path) => { capturedPath = path; return { payments_receivable: true, primary_email_confirmed: true }; };
+      const status = await getMerchantStatus({ paypalApiCall: fakeCall, partnerMerchantId: 'PARTNER1', sellerMerchantId: 'SELLER1' });
+      assert.strictEqual(status, 'connected');
+      assert.strictEqual(capturedPath, '/v1/customer/partners/PARTNER1/merchant-integrations/SELLER1');
+    });
+
+    await test('createOrder routes funds to the correct seller merchant_id and includes custom_id for webhook correlation', async () => {
+      let captured;
+      const fakeCall = async (method, path, body) => { captured = body; return { id: 'ORDER123' }; };
+      await createOrder({ paypalApiCall: fakeCall, sellerMerchantId: 'SELLER1', amount: 19.99, currency: 'USD', customId: 'pay-abc' });
+      assert.strictEqual(captured.purchase_units[0].payee.merchant_id, 'SELLER1');
+      assert.strictEqual(captured.purchase_units[0].amount.value, '19.99');
+      assert.strictEqual(captured.purchase_units[0].custom_id, 'pay-abc');
+    });
+    await test('createOrder has no platform_fees / no platform fee, per the explicit product decision', async () => {
+      let captured;
+      const fakeCall = async (method, path, body) => { captured = body; return { id: 'ORDER123' }; };
+      await createOrder({ paypalApiCall: fakeCall, sellerMerchantId: 'SELLER1', amount: 10, customId: 'pay-x' });
+      assert.strictEqual(captured.purchase_units[0].payee.platform_fees, undefined);
+    });
+
+    await test('captureOrder calls the correct capture endpoint for the given order id', async () => {
+      let capturedPath;
+      const fakeCall = async (method, path) => { capturedPath = path; return { status: 'COMPLETED' }; };
+      await captureOrder({ paypalApiCall: fakeCall, paypalOrderId: 'ORDER123' });
+      assert.strictEqual(capturedPath, '/v2/checkout/orders/ORDER123/capture');
+    });
+
+    await test('refundCapture targets the original capture id', async () => {
+      let capturedPath;
+      const fakeCall = async (method, path) => { capturedPath = path; return { status: 'COMPLETED' }; };
+      await refundCapture({ paypalApiCall: fakeCall, captureId: 'CAP123' });
+      assert.strictEqual(capturedPath, '/v2/payments/captures/CAP123/refund');
+    });
+
+    await test('verifyWebhookSignature accepts a genuinely SUCCESS response', async () => {
+      const fakeCall = async () => ({ verification_status: 'SUCCESS' });
+      await assert.doesNotReject(() => verifyWebhookSignature({ paypalApiCall: fakeCall, headers: {}, webhookId: 'WH1', webhookEventBody: {} }));
+    });
+    await test('verifyWebhookSignature REJECTS anything other than SUCCESS \u2014 never treats an ambiguous response as valid', async () => {
+      const fakeCall = async () => ({ verification_status: 'FAILURE' });
+      await assert.rejects(() => verifyWebhookSignature({ paypalApiCall: fakeCall, headers: {}, webhookId: 'WH1', webhookEventBody: {} }));
+    });
+
+    await test('processWebhookEvent: PAYMENT.CAPTURE.COMPLETED transitions the payment to paid', async () => {
+      const db = { payments: [], paypalWebhookEvents: [] };
+      const payment = await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'paypal', amount: 10, status: 'pending' });
+      const event = { id: 'WH-EVT-1', event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { custom_id: payment.id } };
+      const result = await processWebhookEvent({ db, supabaseAdminClient: null, event });
+      assert.strictEqual(result.processed, true);
+      assert.strictEqual(db.payments[0].status, 'paid');
+    });
+
+    await test('processWebhookEvent: PAYMENT.CAPTURE.DENIED transitions the payment to failed', async () => {
+      const db = { payments: [], paypalWebhookEvents: [] };
+      const payment = await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'paypal', amount: 10, status: 'pending' });
+      const event = { id: 'WH-EVT-2', event_type: 'PAYMENT.CAPTURE.DENIED', resource: { custom_id: payment.id } };
+      await processWebhookEvent({ db, supabaseAdminClient: null, event });
+      assert.strictEqual(db.payments[0].status, 'failed');
+    });
+
+    await test('processWebhookEvent: PAYMENT.CAPTURE.REFUNDED (full) transitions to refunded', async () => {
+      const db = { payments: [], paypalWebhookEvents: [] };
+      const payment = await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'paypal', amount: 10, status: 'paid' });
+      const event = { id: 'WH-EVT-3', event_type: 'PAYMENT.CAPTURE.REFUNDED', resource: { custom_id: payment.id, amount: { value: '10.00' }, seller_payable_breakdown: { net_amount: { value: '0.00' } } } };
+      await processWebhookEvent({ db, supabaseAdminClient: null, event });
+      assert.strictEqual(db.payments[0].status, 'refunded');
+    });
+
+    await test('processWebhookEvent: the SAME event id is never processed twice', async () => {
+      const db = { payments: [], paypalWebhookEvents: [] };
+      const payment = await createPayment({ db, supabaseAdminClient: null, tenantId: 't-1', orderId: 'o-1', clientId: 'c-1', method: 'paypal', amount: 10, status: 'pending' });
+      const event = { id: 'WH-EVT-DUP', event_type: 'PAYMENT.CAPTURE.COMPLETED', resource: { custom_id: payment.id } };
+      const first = await processWebhookEvent({ db, supabaseAdminClient: null, event });
+      db.payments[0].status = 'pending'; // simulate what WOULD happen if wrongly reprocessed
+      const second = await processWebhookEvent({ db, supabaseAdminClient: null, event });
+      assert.strictEqual(first.processed, true);
+      assert.strictEqual(second.processed, false);
+      assert.strictEqual(second.reason, 'duplicate_event');
+      assert.strictEqual(db.payments[0].status, 'pending', 'the duplicate delivery must not have touched the payment again');
+    });
+
+    await test("PayPal's webhook idempotency ledger is genuinely separate from Stripe's \u2014 no cross-provider event id collision is possible even in principle", async () => {
+      const db = { payments: [], stripeWebhookEvents: [{ eventId: 'evt_shared_id', accountId: 'acct_x', eventType: 'x', processedAt: Date.now() }], paypalWebhookEvents: [] };
+      // The exact same id already "seen" on the Stripe side must NOT be considered seen on the PayPal side.
+      assert.strictEqual(await paypalEventProcessed({ db, supabaseAdminClient: null, eventId: 'evt_shared_id' }), false);
     });
   });
 };

@@ -514,11 +514,34 @@ create table stripe_webhook_events (
   processed_at  timestamptz not null default now()
 );
 alter table stripe_webhook_events enable row level security;
--- No one needs to read this table via the normal client/RLS surface at all
--- — it exists purely as an internal dedupe ledger the server-side webhook
--- handler writes to using the service-role key. Deliberately no policies:
--- RLS with zero policies denies all access by default, which is exactly
--- what's wanted here.
+-- No policies (see comment above the Stripe RLS section) — internal
+-- server-only dedupe ledger, denies all normal client access by default.
+
+-- PayPal Connect fields (mirrors Stripe Connect exactly). paypal_merchant_id
+-- is the seller's PayPal-assigned merchant ID — a public identifier
+-- returned after onboarding, not a secret, safe in a normal row. No
+-- PayPal client secret or OAuth access token is ever stored here or
+-- anywhere else in this database; those live only in environment
+-- variables at the application layer, exactly like the Stripe secret key.
+alter table tenant_payment_methods add column paypal_merchant_id text;
+alter table tenant_payment_methods add column paypal_onboarding_status text
+  check (paypal_onboarding_status in ('not_connected', 'pending', 'connected', 'restricted'));
+
+-- Dedicated PayPal webhook-event idempotency, keyed on PayPal's own event
+-- id — NOT the same table as stripe_webhook_events, since PayPal's event
+-- id format/namespace is entirely separate from Stripe's, and conflating
+-- the two providers' dedupe ledgers would be a genuine correctness risk
+-- (a collision between an unrelated Stripe and PayPal event id, however
+-- unlikely, should never be possible even in principle).
+create table paypal_webhook_events (
+  event_id      text primary key,
+  merchant_id   text,
+  event_type    text not null,
+  processed_at  timestamptz not null default now()
+);
+alter table paypal_webhook_events enable row level security;
+-- Same reasoning as stripe_webhook_events: no policies, server-only
+-- access via the service-role key.
 
 create table order_items (
   id                    uuid primary key default gen_random_uuid(),

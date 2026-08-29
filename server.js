@@ -290,6 +290,7 @@ async function initDb() {
   db.payments = db.payments || [];
   db.tenantPaymentMethods = db.tenantPaymentMethods || [];
   db.stripeWebhookEvents = db.stripeWebhookEvents || [];
+  db.paypalWebhookEvents = db.paypalWebhookEvents || [];
   db.orderStatusHistory = db.orderStatusHistory || [];
   db.downloadProducts = db.downloadProducts || [];
   db.marketplaceMembers = db.marketplaceMembers || [];
@@ -1051,6 +1052,33 @@ function stripeClient() {
   if (!process.env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY is not set.');
   if (!_stripeClient) _stripeClient = require('stripe')(process.env.STRIPE_SECRET_KEY);
   return _stripeClient;
+}
+const paypalConnectLib = require('./lib/paypalConnect');
+/** OAuth token cache — client-credentials tokens are valid for a fixed
+ * lifetime (typically ~9h); refetching for every call would be wasteful
+ * and, more importantly, could hit rate limits during a burst of real
+ * traffic. Refreshed automatically once expired. */
+let _paypalTokenCache = null;
+async function paypalApiCall(method, urlPath, body) {
+  if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET) throw new Error('PAYPAL_CLIENT_ID/PAYPAL_CLIENT_SECRET are not set.');
+  const base = process.env.PAYPAL_API_BASE || 'https://api-m.sandbox.paypal.com';
+  if (!_paypalTokenCache || _paypalTokenCache.expiresAt < Date.now()) {
+    const tokenRes = await fetch(`${base}/v1/oauth2/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: `Basic ${Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`).toString('base64')}` },
+      body: 'grant_type=client_credentials',
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok) throw new Error(`PayPal OAuth failed: ${tokenData.error_description || tokenRes.status}`);
+    _paypalTokenCache = { token: tokenData.access_token, expiresAt: Date.now() + (tokenData.expires_in - 60) * 1000 };
+  }
+  const res = await fetch(`${base}${urlPath}`, {
+    method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${_paypalTokenCache.token}` },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || `PayPal API error: ${res.status}`);
+  return data;
 }
 const { supabaseAnon, supabaseForRequest, supabaseAdmin } = AUTH_DRIVER === 'supabase' ? require('./lib/supabaseClient') : {};
 
@@ -2474,22 +2502,27 @@ function getTenantPaymentMethod(tenantId, method) {
 
 /** Starts (or resumes) Stripe onboarding for this store: creates a connected account if one doesn't exist yet, then returns a fresh onboarding link. Admin-only — enabling a payment method is a business decision, matching the RLS policy already built for this table. */
 route('POST', '/api/admin/stripe/connect', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
-  let record = getTenantPaymentMethod(tenant.id, 'stripe');
-  if (!record) {
-    record = { id: newId('tpm'), tenantId: tenant.id, method: 'stripe', enabled: false, stripeAccountId: null, stripeOnboardingStatus: 'not_connected' };
-    db.tenantPaymentMethods.push(record);
-  }
-  if (!record.stripeAccountId) {
-    record.stripeAccountId = await stripeConnectLib.createConnectedAccount({ stripe: stripeClient(), tenantId: tenant.id });
-    record.stripeOnboardingStatus = 'pending';
-    await persist();
-  }
-  const baseUrl = `https://${tenant.subdomain}.${BASE_DOMAIN}`;
-  const url = await stripeConnectLib.createOnboardingLink({
-    stripe: stripeClient(), stripeAccountId: record.stripeAccountId,
-    returnUrl: `${baseUrl}/?stripeOnboarding=return`, refreshUrl: `${baseUrl}/?stripeOnboarding=refresh`,
-  });
+  try {
+    let record = getTenantPaymentMethod(tenant.id, 'stripe');
+    if (!record) {
+      record = { id: newId('tpm'), tenantId: tenant.id, method: 'stripe', enabled: false, stripeAccountId: null, stripeOnboardingStatus: 'not_connected' };
+      db.tenantPaymentMethods.push(record);
+    }
+    if (!record.stripeAccountId) {
+      record.stripeAccountId = await stripeConnectLib.createConnectedAccount({ stripe: stripeClient(), tenantId: tenant.id });
+      record.stripeOnboardingStatus = 'pending';
+      await persist();
+    }
+    const baseUrl = `https://${tenant.subdomain}.${BASE_DOMAIN}`;
+    const url = await stripeConnectLib.createOnboardingLink({
+      stripe: stripeClient(), stripeAccountId: record.stripeAccountId,
+      returnUrl: `${baseUrl}/?stripeOnboarding=return`, refreshUrl: `${baseUrl}/?stripeOnboarding=refresh`,
+    });
   send(res, 200, { onboardingUrl: url, stripeAccountId: record.stripeAccountId });
+  } catch (e) {
+    console.error('[stripe connect] failed:', e.message);
+    send(res, 500, { error: e.message });
+  }
 });
 
 /** Returns this store's current Stripe Connect status, straight from what's stored — the actual truth is only ever updated by the account.updated webhook below, never by this GET request itself. */
@@ -2504,8 +2537,50 @@ route('GET', '/api/admin/stripe/status', { hostScope: 'tenant', auth: true, role
 
 /** Public, customer-facing: is Stripe an available checkout option for this store? Deliberately exposes nothing beyond a single boolean — no account ID, no onboarding status — matching how the product catalog itself is already public. */
 route('GET', '/api/payment-methods', { hostScope: 'tenant' }, async (req, res, params, body, query, user, tenant) => {
-  const record = getTenantPaymentMethod(tenant.id, 'stripe');
-  send(res, 200, { stripeEnabled: !!(record && record.enabled && record.stripeOnboardingStatus === 'connected'), publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null });
+  const stripeRecord = getTenantPaymentMethod(tenant.id, 'stripe');
+  const paypalRecord = getTenantPaymentMethod(tenant.id, 'paypal');
+  send(res, 200, {
+    stripeEnabled: !!(stripeRecord && stripeRecord.enabled && stripeRecord.stripeOnboardingStatus === 'connected'), publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null,
+    paypalEnabled: !!(paypalRecord && paypalRecord.enabled && paypalRecord.paypalOnboardingStatus === 'connected'), paypalClientId: process.env.PAYPAL_CLIENT_ID || null,
+  });
+});
+
+/** Starts PayPal Partner Referrals onboarding for this store — mirrors POST /api/admin/stripe/connect exactly. Admin-only. */
+route('POST', '/api/admin/paypal/connect', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
+  try {
+    let record = getTenantPaymentMethod(tenant.id, 'paypal');
+    if (!record) {
+      record = { id: newId('tpm'), tenantId: tenant.id, method: 'paypal', enabled: false, paypalMerchantId: null, paypalOnboardingStatus: 'not_connected' };
+      db.tenantPaymentMethods.push(record);
+    }
+    const baseUrl = `https://${tenant.subdomain}.${BASE_DOMAIN}`;
+    const actionUrl = await paypalConnectLib.createPartnerReferral({ paypalApiCall, tenantId: tenant.id, trackingId: tenant.id, returnUrl: `${baseUrl}/?paypalOnboarding=return` });
+    record.paypalOnboardingStatus = 'pending';
+    await persist();
+    send(res, 200, { onboardingUrl: actionUrl });
+  } catch (e) {
+    console.error('[paypal connect] failed:', e.message);
+    send(res, 500, { error: e.message });
+  }
+});
+
+/** Returns this store's current PayPal Connect status — mirrors GET /api/admin/stripe/status exactly. */
+route('GET', '/api/admin/paypal/status', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
+  const record = getTenantPaymentMethod(tenant.id, 'paypal');
+  send(res, 200, {
+    enabled: record ? record.enabled : false,
+    paypalMerchantId: record ? record.paypalMerchantId : null,
+    onboardingStatus: record ? record.paypalOnboardingStatus : 'not_connected',
+  });
+});
+
+/** Lets a store admin turn PayPal on/off — only once onboarding has genuinely completed. Mirrors PATCH /api/admin/stripe/enable exactly. */
+route('PATCH', '/api/admin/paypal/enable', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
+  const record = getTenantPaymentMethod(tenant.id, 'paypal');
+  if (!record || record.paypalOnboardingStatus !== 'connected') return send(res, 400, { error: 'PayPal onboarding must be completed before it can be enabled.' });
+  record.enabled = !!body.enabled;
+  await persist();
+  send(res, 200, { enabled: record.enabled });
 });
 
 /** Lets a store admin turn Stripe on/off as an accepted payment method — only once onboarding has actually completed (status: 'connected'), never before, regardless of what the client claims. */
@@ -2591,7 +2666,180 @@ route('POST', '/api/orders/stripe', { hostScope: 'tenant', auth: true, roles: ['
   }
 });
 
+/**
+ * PayPal checkout — Create step. Mirrors the Stripe checkout route's
+ * validation and order/payment creation exactly (same fulfillment-type
+ * restriction, same shipping-address check, same 'pending' order created
+ * up front with stock/fulfillment deferred). Returns PayPal's own Order
+ * ID for the browser's PayPal JS SDK to use for the Approve step — no
+ * secret of any kind is ever included in this response.
+ */
+route('POST', '/api/orders/paypal', { hostScope: 'tenant', auth: true, roles: ['client', 'admin', 'employee'] }, async (req, res, params, body, query, user, tenant) => {
+  if (tenant.closedBySelf) return send(res, 403, { error: apiT('storeClosedNoOrders', reqLang(req)) });
+  if (tenant.subscriptionExpiresAt && tenant.subscriptionExpiresAt < Date.now()) return send(res, 403, { error: apiT('storeSubExpiredNoOrders', reqLang(req)) });
+
+  const record = getTenantPaymentMethod(tenant.id, 'paypal');
+  if (!record || !record.enabled || record.paypalOnboardingStatus !== 'connected') {
+    return send(res, 400, { error: 'PayPal is not available for this store.' });
+  }
+
+  const { items, shippingAddress } = body;
+  if (!Array.isArray(items) || items.length === 0) return send(res, 400, { error: apiT('cartEmpty', reqLang(req)) });
+
+  const resolved = [];
+  for (const line of items) {
+    const p = findProduct(line.productId, tenant.id);
+    if (!p) return send(res, 400, { error: `Unknown product: ${line.productId}` });
+    const qty = line.qty || 1;
+    const category = findCategory(p.categoryId, tenant.id);
+    if (!['shipping', 'manual'].includes(category.fulfillment)) {
+      return send(res, 400, { error: `"${p.name}" cannot currently be purchased with PayPal (download/booking items are not yet supported through PayPal checkout).` });
+    }
+    if (category.fulfillment === 'shipping' && typeof p.stock === 'number' && qty > p.stock) {
+      return send(res, 400, { error: `Only ${p.stock} unit(s) of "${p.name}" left in stock.` });
+    }
+    resolved.push({ product: p, category, qty });
+  }
+  const needsShipping = resolved.some(r => r.category.fulfillment === 'shipping');
+  if (needsShipping && (!shippingAddress || !shippingAddress.trim())) {
+    return send(res, 400, { error: apiT('shippingAddressRequired', reqLang(req)) });
+  }
+  const total = resolved.reduce((s, r) => s + r.product.price * r.qty, 0);
+  const now = Date.now();
+  const orderId = newId('ord');
+  const orderItems = resolved.map(r => ({
+    productId: r.product.id, name: r.product.name, sku: r.product.sku || null, translations: r.product.translations || {}, price: r.product.price, qty: r.qty,
+    categoryId: r.category.id, categoryName: r.category.name, fulfillment: r.category.fulfillment,
+    status: 'awaiting_payment',
+    refundRequested: false, refundStatus: 'none', refundRequestReason: null, refundRequestedAt: null, refundDecisionBy: null, refundDecisionAt: null, refundDecisionReason: null, refundPaymentLast4: null,
+  }));
+  const order = { id: orderId, tenantId: tenant.id, clientId: user.id, clientName: user.name, clientEmail: user.email, items: orderItems, total, paymentStatus: 'pending', status: 'pending', shippingAddress: needsShipping ? shippingAddress : null, createdAt: now };
+  db.orders.push(order);
+  db.orderStatusHistory.push({ id: newId('osh'), tenantId: tenant.id, orderId, status: 'pending', changedBy: 'System', changedAt: now });
+
+  try {
+    const payment = await createPaymentRecord({ db, supabaseAdminClient: null, tenantId: tenant.id, orderId, clientId: user.id, method: 'paypal', status: 'pending', amount: total, currency: 'usd' });
+    const paypalOrder = await paypalConnectLib.createOrder({ paypalApiCall, sellerMerchantId: record.paypalMerchantId, amount: total, currency: 'USD', customId: payment.id });
+    payment.providerReference = paypalOrder.id;
+    await persist();
+    send(res, 201, { orderId, paypalOrderId: paypalOrder.id, paypalClientId: process.env.PAYPAL_CLIENT_ID || null });
+  } catch (e) {
+    console.error('[paypal checkout] failed to create Order:', e.message);
+    send(res, 500, { error: 'Could not start PayPal payment. Please try again.' });
+  }
+});
+
+/**
+ * PayPal checkout — server-side Capture step, called by the browser only
+ * AFTER the customer has approved on PayPal's own UI. This is the step
+ * that actually moves money — matching the exact same "never trust the
+ * browser alone" principle already enforced for Stripe, this endpoint's
+ * own success response is still NOT what marks the order paid; the
+ * payments/orders records are only updated once the corresponding
+ * webhook (PAYMENT.CAPTURE.COMPLETED) is independently verified and
+ * processed, exactly like Stripe's payment_intent.succeeded.
+ */
+route('POST', '/api/orders/paypal/:orderId/capture', { hostScope: 'tenant', auth: true, roles: ['client', 'admin', 'employee'] }, async (req, res, params, body, query, user, tenant) => {
+  const order = db.orders.find(o => o.id === params.orderId && o.tenantId === tenant.id);
+  if (!order) return send(res, 404, { error: 'Order not found.' });
+  const payment = db.payments.find(p => p.orderId === order.id && p.method === 'paypal');
+  if (!payment) return send(res, 404, { error: 'No PayPal payment found for this order.' });
+  try {
+    const result = await paypalConnectLib.captureOrder({ paypalApiCall, paypalOrderId: payment.providerReference });
+    send(res, 200, { status: result.status });
+  } catch (e) {
+    console.error('[paypal checkout] failed to capture Order:', e.message);
+    send(res, 500, { error: 'Could not confirm PayPal payment. Please try again.' });
+  }
+});
+
+/**
+ * Provider-dispatching refund endpoint — staff never needs to know or
+ * care which provider a payment used; this route figures that out from
+ * the payment record itself and calls the correct API. Staff-only
+ * (matching the existing refund pattern elsewhere in this app — a
+ * customer can request a refund, but never grant one themselves).
+ *
+ * Critical rule, matching checkout exactly: this route calls the real
+ * provider refund API and returns whatever THEY report back — but it
+ * NEVER transitions payment.status itself. Only the corresponding
+ * webhook (charge.refunded / PAYMENT.CAPTURE.REFUNDED), independently
+ * verified, does that. A refund "succeeding" from the provider's
+ * immediate API response is not the same as it being confirmed —
+ * exactly the same principle already enforced for "payment succeeded."
+ */
+route('POST', '/api/admin/payments/:paymentId/refund', { hostScope: 'tenant', auth: true, roles: ['admin', 'employee'] }, async (req, res, params, body, query, user, tenant) => {
+  const payment = db.payments.find(p => p.id === params.paymentId);
+  if (!payment) return send(res, 404, { error: 'Payment not found.' });
+  // Tenant ownership check — a real security boundary, not a formality:
+  // this is what stops Store A's staff from refunding Store B's payment
+  // even if they somehow guessed/obtained a valid payment id.
+  if (payment.tenantId !== tenant.id) return send(res, 404, { error: 'Payment not found.' });
+
+  if (!['paid', 'partially_refunded'].includes(payment.status)) {
+    return send(res, 400, { error: `This payment cannot be refunded from its current status (${payment.status}).` });
+  }
+
+  const amount = body && body.amount != null ? Number(body.amount) : undefined; // undefined -> full refund
+  if (amount !== undefined && (!(amount > 0) || amount > payment.amount)) {
+    return send(res, 400, { error: 'Refund amount must be a positive number no greater than the original payment amount.' });
+  }
+
+  try {
+    if (payment.method === 'stripe') {
+      await stripeConnectLib.createRefund({ stripe: stripeClient(), paymentIntentId: payment.providerReference, amount });
+    } else if (payment.method === 'paypal') {
+      // The PayPal Order id (payment.providerReference) is not itself
+      // refundable — refunds target the CAPTURE id, which only exists
+      // after a successful capture. This app doesn't currently persist
+      // the capture id separately, so it's read back from PayPal here.
+      const orderDetails = await paypalApiCall('GET', `/v2/checkout/orders/${payment.providerReference}`);
+      const capture = orderDetails.purchase_units && orderDetails.purchase_units[0] && orderDetails.purchase_units[0].payments && orderDetails.purchase_units[0].payments.captures && orderDetails.purchase_units[0].payments.captures[0];
+      if (!capture) return send(res, 400, { error: 'No completed capture found for this payment yet.' });
+      await paypalConnectLib.refundCapture({ paypalApiCall, captureId: capture.id, amount, currency: payment.currency ? payment.currency.toUpperCase() : 'USD' });
+    } else {
+      return send(res, 400, { error: `Refunds are not supported for payment method "${payment.method}" through this endpoint.` });
+    }
+    // Deliberately still 'paid'/'partially_refunded' here — the request
+    // to refund was accepted by the provider, but confirmation is
+    // webhook-driven, same as checkout.
+    send(res, 202, { status: payment.status, message: 'Refund request accepted; awaiting provider confirmation.' });
+  } catch (e) {
+    console.error(`[${payment.method} refund] failed:`, e.message);
+    send(res, 500, { error: e.message });
+  }
+});
+
 /** The Stripe Connect webhook endpoint. Platform-level (hostScope: 'any') since Stripe calls one fixed URL regardless of which connected account an event is for — event.account in the verified payload, never anything host- or client-supplied, is what identifies the tenant. rawBody: true is essential here — see readRawBody's own comment for why. */
+/** Applies the real-world consequences of a payment's outcome to its order: fulfillment status, stock decrement (only on success, only for shipping items), and the payment_received notification. Shared by every provider's webhook handler (Stripe, PayPal, and any future method) so this logic — the actual "did the money really arrive" business rules — is defined exactly once. */
+async function applyPaymentOutcomeToOrder(payment, succeeded) {
+  const order = payment && db.orders.find(o => o.id === payment.orderId);
+  if (!order) return;
+  order.paymentStatus = succeeded ? 'success' : 'failed';
+  for (const item of order.items) {
+    item.status = succeeded ? (item.fulfillment === 'shipping' ? 'pending' : item.fulfillment === 'booking' ? 'requested' : item.fulfillment === 'download' ? 'ready' : 'pending') : 'payment_failed';
+    if (succeeded && item.fulfillment === 'shipping') {
+      const product = findProduct(item.productId, order.tenantId);
+      if (product && typeof product.stock === 'number') {
+        product.stock -= item.qty;
+        db.stockMovements.push({ id: newId('stkmv'), tenantId: order.tenantId, productId: item.productId, change: -item.qty, reason: 'sale', orderId: order.id, createdBy: null, createdAt: Date.now() });
+      }
+    }
+  }
+  if (succeeded) {
+    const itemsList = order.items.map(i => `- ${i.name} × ${i.qty} ($${(i.price * i.qty).toFixed(2)})`).join('\n');
+    const orderDate = new Date(order.createdAt).toLocaleString();
+    for (const admin of db.users.filter(u => u.tenantId === order.tenantId && u.role === 'admin')) {
+      const adminLang = await getRecipientLang(admin.email);
+      const subject = emailT(EMAIL_I18N, 'paymentReceivedSubject', adminLang)(order.id);
+      const emailBody = emailT(EMAIL_I18N, 'paymentReceivedBody', adminLang)(order.id, order.clientName, order.total.toFixed(2), orderDate, itemsList);
+      db.notifications.push({ id: newId('notif'), tenantId: order.tenantId, type: 'payment_received', to: admin.email, subject, body: emailBody, sentAt: Date.now() });
+      try { await sendRealEmail({ to: admin.email, subject, text: emailBody, html: wrapEmailHtml(emailBody, adminLang) }); } catch { /* best-effort, matches every other notification in this app */ }
+    }
+  }
+  await persist();
+}
+
 route('POST', '/api/webhooks/stripe', { hostScope: 'any', rawBody: true }, async (req, res, params, body) => {
   const signature = req.headers['stripe-signature'];
   if (!signature) return send(res, 400, { error: 'Missing Stripe-Signature header.' });
@@ -2627,34 +2875,46 @@ route('POST', '/api/webhooks/stripe', { hostScope: 'any', rawBody: true }, async
     const intent = event.data.object;
     const paymentId = intent.metadata && intent.metadata.paymentId;
     const payment = paymentId && db.payments.find(p => p.id === paymentId);
-    const order = payment && db.orders.find(o => o.id === payment.orderId);
-    if (order) {
-      const succeeded = event.type === 'payment_intent.succeeded';
-      order.paymentStatus = succeeded ? 'success' : 'failed';
-      for (const item of order.items) {
-        item.status = succeeded ? (item.fulfillment === 'shipping' ? 'pending' : item.fulfillment === 'booking' ? 'requested' : item.fulfillment === 'download' ? 'ready' : 'pending') : 'payment_failed';
-        if (succeeded && item.fulfillment === 'shipping') {
-          const product = findProduct(item.productId, order.tenantId);
-          if (product && typeof product.stock === 'number') {
-            product.stock -= item.qty;
-            db.stockMovements.push({ id: newId('stkmv'), tenantId: order.tenantId, productId: item.productId, change: -item.qty, reason: 'sale', orderId: order.id, createdBy: null, createdAt: Date.now() });
-          }
-        }
+    await applyPaymentOutcomeToOrder(payment, event.type === 'payment_intent.succeeded');
+  }
+  send(res, 200, { received: true });
+});
+
+/**
+ * PayPal webhook endpoint. Platform-level (hostScope: 'any') since PayPal
+ * calls one fixed URL regardless of which connected seller an event is
+ * for — resource.merchant_id in the verified payload, never anything
+ * host- or client-supplied, is what identifies the tenant, matching
+ * exactly how Stripe's event.account is used above. Does NOT need
+ * rawBody — PayPal's own verify-webhook-signature API takes the parsed
+ * JSON event body directly, unlike Stripe's local HMAC check.
+ */
+route('POST', '/api/webhooks/paypal', { hostScope: 'any' }, async (req, res, params, body) => {
+  if (!process.env.PAYPAL_WEBHOOK_ID) return send(res, 500, { error: 'Webhook ID not configured.' });
+  try {
+    await paypalConnectLib.verifyWebhookSignature({ paypalApiCall, headers: req.headers, webhookId: process.env.PAYPAL_WEBHOOK_ID, webhookEventBody: body });
+  } catch (err) {
+    console.error('[paypal webhook] signature verification failed:', err.message);
+    return send(res, 400, { error: 'Invalid signature.' });
+  }
+
+  const result = await paypalConnectLib.processWebhookEvent({ db, supabaseAdminClient: null, event: body });
+
+  if (result.processed && (body.event_type === 'MERCHANT.ONBOARDING.COMPLETED' || body.event_type === 'MERCHANT.PARTNER-CONSENT.REVOKED')) {
+    const merchantId = body.resource && (body.resource.merchant_id || (body.resource.partner_client_id ? body.resource.merchant_id : null));
+    if (merchantId) {
+      const record = db.tenantPaymentMethods.find(m => m.paypalMerchantId === merchantId);
+      if (record) {
+        record.paypalOnboardingStatus = body.event_type === 'MERCHANT.ONBOARDING.COMPLETED' ? 'connected' : 'restricted';
+        await persist();
       }
-      if (succeeded) {
-        const tenantForOrder = db.tenants.find(t => t.id === order.tenantId);
-        const itemsList = order.items.map(i => `- ${i.name} × ${i.qty} ($${(i.price * i.qty).toFixed(2)})`).join('\n');
-        const orderDate = new Date(order.createdAt).toLocaleString();
-        for (const admin of db.users.filter(u => u.tenantId === order.tenantId && u.role === 'admin')) {
-          const adminLang = await getRecipientLang(admin.email);
-          const subject = emailT(EMAIL_I18N, 'paymentReceivedSubject', adminLang)(order.id);
-          const emailBody = emailT(EMAIL_I18N, 'paymentReceivedBody', adminLang)(order.id, order.clientName, order.total.toFixed(2), orderDate, itemsList);
-          db.notifications.push({ id: newId('notif'), tenantId: order.tenantId, type: 'payment_received', to: admin.email, subject, body: emailBody, sentAt: Date.now() });
-          try { await sendRealEmail({ to: admin.email, subject, text: emailBody, html: wrapEmailHtml(emailBody, adminLang) }); } catch { /* best-effort, matches every other notification in this app */ }
-        }
-      }
-      await persist();
     }
+  }
+
+  if (result.processed && (body.event_type === 'PAYMENT.CAPTURE.COMPLETED' || body.event_type === 'PAYMENT.CAPTURE.DENIED')) {
+    const paymentId = body.resource && body.resource.custom_id;
+    const payment = paymentId && db.payments.find(p => p.id === paymentId);
+    await applyPaymentOutcomeToOrder(payment, body.event_type === 'PAYMENT.CAPTURE.COMPLETED');
   }
   send(res, 200, { received: true });
 });
@@ -5076,4 +5336,4 @@ if (require.main === module) {
     setInterval(() => { checkDeliveryConfirmationReminders().catch(err => console.error('Delivery reminder check failed:', err)); }, 60 * 60 * 1000);
   })().catch(err => { console.error('Failed to start:', err); process.exit(1); });
 }
-module.exports = { server, initDb, resolveHost, hashPassword, verifyPassword, signToken, verifyToken, refreshItemStatus, DB_PATH, SEED_PATH, getDb: () => db };
+module.exports = { server, initDb, resolveHost, hashPassword, verifyPassword, signToken, verifyToken, refreshItemStatus, DB_PATH, SEED_PATH, getDb: () => db, applyPaymentOutcomeToOrder };
