@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node tests/run.js",
-    "test:email:resend": "node scripts/test-email-resend.js"
+    "test:email:resend": "node scripts/test-email-resend.js",
+    "test:paypal:sandbox": "node scripts/paypal-sandbox-e2e.js"
   },
   "engines": {
     "node": ">=16"

@@ -1,0 +1,57 @@
+name: PayPal Sandbox E2E (real API, no mocks)
+
+# Runs the REAL PayPal Sandbox API E2E script (scripts/paypal-sandbox-e2e.js)
+# against PayPal's actual sandbox — genuine network calls, no fakes.
+#
+# IMPORTANT SCOPE, read before assuming this proves more than it does:
+# PayPal's Orders API genuinely requires an interactive, PayPal-hosted
+# buyer-approval redirect before an order can be captured — there is no
+# supported API parameter that bypasses this for a fresh order (confirmed
+# directly against PayPal's own docs). This workflow therefore covers
+# everything reachable WITHOUT that interactive step: OAuth, Platform app
+# credential verification, real merchant-association verification, real
+# order creation, and confirming the order correctly targets the expected
+# merchant. It does NOT and cannot cover: buyer approval, capture, webhook
+# delivery, or refund confirmation — those require the documented
+# occasional MANUAL verification (see docs/PAYPAL_SANDBOX_E2E.md), and
+# this workflow does not simulate, mock, or otherwise fake having done
+# them. See that doc for the full evidence model.
+#
+# One-time manual prerequisite (not something this workflow can do): a
+# sandbox seller account must already exist and have completed PayPal's
+# hosted onboarding once, by hand, before PAYPAL_SANDBOX_MERCHANT_ID
+# below means anything. This workflow only ever READS that merchant's
+# state — it never performs onboarding itself.
+#
+# Deliberately NOT triggered on pull_request, for the same reasons as
+# email-integration.yml: secrets aren't exposed to fork PRs, and a real
+# external API call on every PR push is unnecessary noise for something
+# the existing 330+ mocked tests already exercise deterministically.
+#
+# Secrets live in the "paypal-sandbox-e2e" GitHub Environment, letting
+# you require manual approval before a run can access them (Settings ->
+# Environments -> paypal-sandbox-e2e -> "Required reviewers"), scoped to
+# only this one job.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  paypal-sandbox-e2e:
+    runs-on: ubuntu-latest
+    environment: paypal-sandbox-e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - name: Mocked/offline application test suite (330+ tests)
+        run: npm test
+      - name: Real PayPal Sandbox API E2E (no mocks — see script header)
+        run: node scripts/paypal-sandbox-e2e.js
+        env:
+          PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
+          PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
+          PAYPAL_SANDBOX_MERCHANT_ID: ${{ secrets.PAYPAL_SANDBOX_MERCHANT_ID }}
