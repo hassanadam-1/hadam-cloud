@@ -39,6 +39,7 @@ node check-order.js
 # Large third-party binaries that don't belong in the repo at all.
 cloudflared.exe
 cloudflared.log
+stripe.exe
 
 # Personal/planning documents — not application code.
 project materials/
