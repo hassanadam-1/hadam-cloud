@@ -25,6 +25,7 @@
 
 const BASE = 'https://api-m.sandbox.paypal.com';
 const REQUIRED_VARS = ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET', 'PAYPAL_SANDBOX_MERCHANT_ID'];
+const SANDBOX_TRACKING_ID = 'hadam-onboarding-test-1';
 
 let passed = 0;
 let failed = 0;
@@ -93,7 +94,7 @@ async function main() {
     // A lightweight authenticated call — if the token/app itself is
     // invalid or lacks the Platform capability, this fails with a real
     // 401/403 from PayPal, not from anything we constructed ourselves.
-    const result = await call('GET', `/v1/customer/partners/${process.env.PAYPAL_SANDBOX_MERCHANT_ID}/merchant-integrations`);
+    const result = await call('GET', `/v1/customer/partners/${process.env.PAYPAL_SANDBOX_MERCHANT_ID}/merchant-integrations?tracking_id=${SANDBOX_TRACKING_ID}`);
     if (!result.ok && result.status !== 404) {
       // 404 here can legitimately mean "no sub-merchants yet listed under
       // this exact path shape" depending on account configuration — what
@@ -105,7 +106,7 @@ async function main() {
 
   let realMerchantStatus;
   await step('Fetch the REAL onboarding/status of the pre-onboarded sandbox merchant', async () => {
-    const result = await call('GET', `/v1/customer/partners/${process.env.PAYPAL_SANDBOX_MERCHANT_ID}/merchant-integrations/${process.env.PAYPAL_SANDBOX_MERCHANT_ID}`);
+    const result = await call('GET', `/v1/customer/partners/${process.env.PAYPAL_SANDBOX_MERCHANT_ID}/merchant-integrations?tracking_id=${SANDBOX_TRACKING_ID}`);
     if (!result.ok) throw new Error(`Could not fetch merchant status: ${result.status} ${JSON.stringify(result.data)}`);
     realMerchantStatus = result.data;
     const { mapMerchantStatus } = require('../lib/paypalConnect');
