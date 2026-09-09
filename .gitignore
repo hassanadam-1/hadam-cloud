@@ -54,3 +54,15 @@ hadam-cloud*.zip
 Thumbs.db
 *.tmp
 ~$*
+acct.json
+mfaenroll.json
+partnerreferral.json
+paypalid.txt
+paypalsecret.txt
+referral.json
+stripelisten.log
+stripesecret.txt
+stripetoken.txt
+token.txt
+forced-failure-test.js
+passcodes/

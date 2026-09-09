@@ -141,7 +141,7 @@ const I18N = {
     planChangeGenericWarning: "Change your store's plan? This takes effect immediately.", savedMsg: 'Saved.',
     planLabelForm: 'Plan', employeeRoleOpt: 'Employee', adminRoleOpt: 'Admin',
     refundRequestedStatus: 'Refund requested', requestRefundBtn: 'Request refund',
-    stripePaymentsH3: 'Stripe payments', stripeIntroText: 'Connect your own Stripe account to accept card payments directly \u2014 customer payments go straight to your account, not through Hadam.', stripeConnectBtn: 'Connect Stripe', stripeContinueOnboardingBtn: 'Continue Stripe setup', stripeEnableAsPaymentMethod: 'Accept Stripe payments in this store', stripeStatus_not_connected: 'Not connected', stripeStatus_pending: 'Setup incomplete', stripeStatus_connected: 'Connected', stripeStatus_restricted: 'Action needed', stripeNotConnectedHint: 'Connect a Stripe account to start accepting card payments.', stripePendingHint: "You've started connecting Stripe, but setup isn't finished yet \u2014 continue where you left off.", stripeConnectedHint: 'Your Stripe account is fully connected and ready to accept payments.', stripeRestrictedHint: 'Stripe needs more information from you before this account can accept payments \u2014 continuing setup will show what\u2019s required.', stripeReturnMsg: "Welcome back \u2014 we're checking your Stripe connection status.", stripeRefreshMsg: 'That Stripe setup link expired. Click below to get a new one.', orPaySimulated: 'Or use the simulated test payment below:', stripePaymentSubmittedMsg: 'Payment submitted — confirming with Stripe now.',
+    stripePaymentsH3: 'Stripe payments', stripeIntroText: 'Connect your own Stripe account to accept card payments directly \u2014 customer payments go straight to your account, not through Hadam.', stripeConnectBtn: 'Connect Stripe', stripeContinueOnboardingBtn: 'Continue Stripe setup', stripeEnableAsPaymentMethod: 'Accept Stripe payments in this store', stripeStatus_not_connected: 'Not connected', stripeStatus_pending: 'Setup incomplete', stripeStatus_connected: 'Connected', stripeStatus_restricted: 'Action needed', stripeNotConnectedHint: 'Connect a Stripe account to start accepting card payments.', stripePendingHint: "You've started connecting Stripe, but setup isn't finished yet \u2014 continue where you left off.", stripeConnectedHint: 'Your Stripe account is fully connected and ready to accept payments.', stripeRestrictedHint: 'Stripe needs more information from you before this account can accept payments \u2014 continuing setup will show what\u2019s required.', stripeReturnMsg: "Welcome back \u2014 we're checking your Stripe connection status.", stripeRefreshMsg: 'That Stripe setup link expired. Click below to get a new one.', orPaySimulated: 'Or use the simulated test payment below:', stripePaymentSubmittedMsg: 'Payment submitted — confirming with Stripe now.', payWithPaypal: 'Pay with PayPal', payWithCash: 'Pay with cash', cashPaymentHint: 'Pay with cash when you receive or collect your order.', cashOrderPlacedMsg: 'Order placed — pay with cash when you receive/collect it.', confirmCashReceivedBtn: 'Confirm cash received', cashConfirmedLabel: 'Cash confirmed', confirmCashReceivedConfirm: 'Confirm you have received cash payment for this order?', searchOrdersPlaceholder: 'Search by order ID, client, or product code', noOrdersMatchSearch: 'No orders match your search.', searchMyOrdersPlaceholder: 'Search by order ID or product code', payWithBankTransfer: 'Pay by bank transfer', bankTransferPaymentHint: 'Place your order to receive our bank details and a reference number for your transfer.', bankTransferOrderPlacedMsg: 'Order placed — complete your bank transfer using the reference below.', bankNameLabel: 'Bank name', accountNameLabel: 'Account name', accountNumberLabel: 'Account number', sortCodeLabel: 'Sort code', ibanLabel: 'IBAN', amountLabel: 'Amount', referenceLabel: 'Reference (required)', bankTransferReferenceHint: 'Please include this exact reference with your transfer so we can match it to your order.', confirmBankTransferBtn: 'Confirm transfer received', confirmBankTransferConfirm: 'Confirm you have received this bank transfer, matched by its reference number?', bankTransferConfirmedLabel: 'Transfer confirmed', cancelPendingBtn: 'Cancel', cancelPendingConfirm: 'Cancel this pending payment? The order will not be settled.', paymentCancelledLabel: 'Cancelled',
     storeDetailsH3: 'Store details',
     alreadyDownloadedLabel: 'Downloaded', noRefundAfterDownloadHint: 'Not eligible for refund — this digital product has already been downloaded.',
     languageCodeLabel: 'Language code', maxDownloadsLabel: 'Max downloads', descriptionLabel: 'Description',
@@ -230,6 +230,19 @@ const I18N = {
     loginToMessageStore: 'Log in to send this store a message, or use My Orders once you have one to ask about it directly.',
     contactSentMsg: 'Sent — the store will get back to you.',
     storeFooterText: 'Powered by Hadam Marketplace — the global digital store and multi-tenant marketplace platform. © 2026 Hadam Marketplace. All rights reserved.',
+    paypalPaymentsH3: 'PayPal', paypalReturnMsg: 'Welcome back — checking your PayPal onboarding status now.',
+    paypalIntroText: 'Accept PayPal payments directly through your store, powered by PayPal Partner Referrals.',
+    paypalStatus_not_connected: 'Not connected', paypalStatus_pending: 'Pending', paypalStatus_connected: 'Connected', paypalStatus_restricted: 'Restricted',
+    paypalNotConnectedHint: 'Connect your PayPal account to start accepting PayPal payments.',
+    paypalPendingHint: 'Onboarding is in progress — finish connecting your PayPal account to continue.',
+    paypalRestrictedHint: 'PayPal has restricted this account. Payments cannot be accepted until this is resolved with PayPal.',
+    paypalConnectedHint: 'Your PayPal account is connected and ready to accept payments.',
+    paypalConnectBtn: 'Connect PayPal', paypalContinueOnboardingBtn: 'Continue onboarding', paypalEnableAsPaymentMethod: 'Accept PayPal as a payment method',
+    cashPaymentsH3: 'Cash on delivery', cashIntroText: 'Let customers place an order and pay in cash when they receive or collect it. No external account setup needed.',
+    cashEnableAsPaymentMethod: 'Accept cash on delivery',
+    bankTransferPaymentsH3: 'Bank transfer', bankTransferIntroText: 'Let customers place an order and pay by direct bank transfer, using a reference number you confirm manually. No external account setup needed.',
+    bankTransferEnableAsPaymentMethod: 'Accept bank transfer',
+    enterShippingAddressToContinue: 'Enter your shipping address above to load the payment form.',
   },
   ar: {
     home: 'الرئيسية', stores: 'المتاجر', myOrders: 'طلباتي', fulfillmentQueue: 'قائمة التنفيذ', admin: 'الإدارة',
@@ -366,7 +379,7 @@ const I18N = {
     planChangeGenericWarning: 'تغيير خطة متجرك؟ يسري هذا فورًا.', savedMsg: 'تم الحفظ.',
     planLabelForm: 'الخطة', employeeRoleOpt: 'موظف', adminRoleOpt: 'مسؤول',
     refundRequestedStatus: 'تم طلب الاسترداد', requestRefundBtn: 'طلب استرداد',
-    stripePaymentsH3: 'مدفوعات Stripe', stripeIntroText: 'اربط حساب Stripe الخاص بك لقبول المدفوعات بالبطاقة مباشرة — تذهب مدفوعات العملاء إلى حسابك مباشرة، وليس عبر هدام.', stripeConnectBtn: 'ربط Stripe', stripeContinueOnboardingBtn: 'متابعة إعداد Stripe', stripeEnableAsPaymentMethod: 'قبول مدفوعات Stripe في هذا المتجر', stripeStatus_not_connected: 'غير مرتبط', stripeStatus_pending: 'الإعداد غير مكتمل', stripeStatus_connected: 'مرتبط', stripeStatus_restricted: 'يتطلب إجراء', stripeNotConnectedHint: 'اربط حساب Stripe لبدء قبول المدفوعات بالبطاقة.', stripePendingHint: 'بدأت في ربط Stripe، لكن الإعداد لم يكتمل بعد — تابع من حيث توقفت.', stripeConnectedHint: 'حساب Stripe الخاص بك مرتبط بالكامل وجاهز لقبول المدفوعات.', stripeRestrictedHint: 'يحتاج Stripe إلى مزيد من المعلومات منك قبل أن يتمكن هذا الحساب من قبول المدفوعات — متابعة الإعداد ستُظهر ما هو مطلوب.', stripeReturnMsg: 'مرحبًا بعودتك — نتحقق من حالة اتصال Stripe الخاص بك.', stripeRefreshMsg: 'انتهت صلاحية رابط إعداد Stripe هذا. انقر أدناه للحصول على رابط جديد.', orPaySimulated: 'أو استخدم الدفع التجريبي المحاكى أدناه:', stripePaymentSubmittedMsg: 'تم إرسال الدفعة — جارٍ التأكيد مع Stripe الآن.',
+    stripePaymentsH3: 'مدفوعات Stripe', stripeIntroText: 'اربط حساب Stripe الخاص بك لقبول المدفوعات بالبطاقة مباشرة — تذهب مدفوعات العملاء إلى حسابك مباشرة، وليس عبر هدام.', stripeConnectBtn: 'ربط Stripe', stripeContinueOnboardingBtn: 'متابعة إعداد Stripe', stripeEnableAsPaymentMethod: 'قبول مدفوعات Stripe في هذا المتجر', stripeStatus_not_connected: 'غير مرتبط', stripeStatus_pending: 'الإعداد غير مكتمل', stripeStatus_connected: 'مرتبط', stripeStatus_restricted: 'يتطلب إجراء', stripeNotConnectedHint: 'اربط حساب Stripe لبدء قبول المدفوعات بالبطاقة.', stripePendingHint: 'بدأت في ربط Stripe، لكن الإعداد لم يكتمل بعد — تابع من حيث توقفت.', stripeConnectedHint: 'حساب Stripe الخاص بك مرتبط بالكامل وجاهز لقبول المدفوعات.', stripeRestrictedHint: 'يحتاج Stripe إلى مزيد من المعلومات منك قبل أن يتمكن هذا الحساب من قبول المدفوعات — متابعة الإعداد ستُظهر ما هو مطلوب.', stripeReturnMsg: 'مرحبًا بعودتك — نتحقق من حالة اتصال Stripe الخاص بك.', stripeRefreshMsg: 'انتهت صلاحية رابط إعداد Stripe هذا. انقر أدناه للحصول على رابط جديد.', orPaySimulated: 'أو استخدم الدفع التجريبي المحاكى أدناه:', stripePaymentSubmittedMsg: 'تم إرسال الدفعة — جارٍ التأكيد مع Stripe الآن.', payWithPaypal: 'ادفع عبر PayPal', payWithCash: 'ادفع نقدًا', cashPaymentHint: 'ادفع نقدًا عند استلام طلبك.', cashOrderPlacedMsg: 'تم تقديم الطلب — ادفع نقدًا عند الاستلام.', confirmCashReceivedBtn: 'تأكيد استلام النقد', cashConfirmedLabel: 'تم تأكيد الدفع النقدي', confirmCashReceivedConfirm: 'هل تؤكد استلام الدفع النقدي لهذا الطلب؟', searchOrdersPlaceholder: 'ابحث برقم الطلب أو العميل أو رمز المنتج', noOrdersMatchSearch: 'لا توجد طلبات مطابقة لبحثك.', searchMyOrdersPlaceholder: 'ابحث برقم الطلب أو رمز المنتج', payWithBankTransfer: 'ادفع عبر التحويل البنكي', bankTransferPaymentHint: 'قدّم طلبك للحصول على تفاصيل حسابنا البنكي ورقم مرجعي للتحويل.', bankTransferOrderPlacedMsg: 'تم تقديم الطلب — أكمل التحويل البنكي باستخدام الرقم المرجعي أدناه.', bankNameLabel: 'اسم البنك', accountNameLabel: 'اسم الحساب', accountNumberLabel: 'رقم الحساب', sortCodeLabel: 'رمز الفرع', ibanLabel: 'رقم الآيبان', amountLabel: 'المبلغ', referenceLabel: 'الرقم المرجعي (مطلوب)', bankTransferReferenceHint: 'يرجى تضمين هذا الرقم المرجعي بالضبط مع تحويلك حتى نتمكن من مطابقته بطلبك.', confirmBankTransferBtn: 'تأكيد استلام التحويل', confirmBankTransferConfirm: 'هل تؤكد استلام هذا التحويل البنكي، مطابقًا برقمه المرجعي؟', bankTransferConfirmedLabel: 'تم تأكيد التحويل', cancelPendingBtn: 'إلغاء', cancelPendingConfirm: 'إلغاء هذا الدفع المعلّق؟ لن تتم تسوية الطلب.', paymentCancelledLabel: 'ملغى',
     storeDetailsH3: 'تفاصيل المتجر',
     alreadyDownloadedLabel: 'تم التنزيل', noRefundAfterDownloadHint: 'غير مؤهل للاسترداد — تم تنزيل هذا المنتج الرقمي بالفعل.',
     languageCodeLabel: 'رمز اللغة', maxDownloadsLabel: 'الحد الأقصى للتنزيلات', descriptionLabel: 'الوصف',
@@ -455,6 +468,19 @@ const I18N = {
     loginToMessageStore: 'سجّل الدخول لإرسال رسالة إلى هذا المتجر، أو استخدم طلباتي بمجرد وجود طلب للاستفسار عنه مباشرة.',
     contactSentMsg: 'تم الإرسال — سيتواصل معك المتجر قريبًا.',
     storeFooterText: 'مدعوم من سوق هدام — المتجر الرقمي العالمي ومنصة السوق متعددة المستأجرين. © 2026 سوق هدام. جميع الحقوق محفوظة.',
+    paypalPaymentsH3: 'باي بال', paypalReturnMsg: 'مرحبًا بعودتك — جارٍ التحقق من حالة ربط حساب باي بال الآن.',
+    paypalIntroText: 'اقبل مدفوعات باي بال مباشرة عبر متجرك، عبر إحالات شركاء باي بال.',
+    paypalStatus_not_connected: 'غير مرتبط', paypalStatus_pending: 'قيد الإجراء', paypalStatus_connected: 'مرتبط', paypalStatus_restricted: 'مقيّد',
+    paypalNotConnectedHint: 'اربط حساب باي بال الخاص بك لبدء قبول مدفوعات باي بال.',
+    paypalPendingHint: 'الربط قيد التنفيذ — أكمل ربط حساب باي بال الخاص بك للمتابعة.',
+    paypalRestrictedHint: 'قام باي بال بتقييد هذا الحساب. لا يمكن قبول المدفوعات حتى يتم حل هذا الأمر مع باي بال.',
+    paypalConnectedHint: 'حساب باي بال الخاص بك مرتبط وجاهز لقبول المدفوعات.',
+    paypalConnectBtn: 'ربط باي بال', paypalContinueOnboardingBtn: 'متابعة الربط', paypalEnableAsPaymentMethod: 'قبول باي بال كوسيلة دفع',
+    cashPaymentsH3: 'الدفع عند الاستلام', cashIntroText: 'اسمح للعملاء بتقديم الطلب والدفع نقدًا عند استلامه أو استلامه من المتجر. لا حاجة لإعداد حساب خارجي.',
+    cashEnableAsPaymentMethod: 'قبول الدفع نقدًا عند الاستلام',
+    bankTransferPaymentsH3: 'التحويل البنكي', bankTransferIntroText: 'اسمح للعملاء بتقديم الطلب والدفع عبر التحويل البنكي المباشر، باستخدام رقم مرجعي تؤكده يدويًا. لا حاجة لإعداد حساب خارجي.',
+    bankTransferEnableAsPaymentMethod: 'قبول التحويل البنكي',
+    enterShippingAddressToContinue: 'أدخل عنوان الشحن أعلاه لتحميل نموذج الدفع.',
   },
   fr: {
     home: 'Accueil', stores: 'Boutiques', myOrders: 'Mes commandes', fulfillmentQueue: 'File de traitement', admin: 'Admin',
@@ -591,7 +617,7 @@ const I18N = {
     planChangeGenericWarning: "Changer l'offre de votre boutique ? Cela prend effet immédiatement.", savedMsg: 'Enregistré.',
     planLabelForm: 'Offre', employeeRoleOpt: 'Employé', adminRoleOpt: 'Admin',
     refundRequestedStatus: 'Remboursement demandé', requestRefundBtn: 'Demander un remboursement',
-    stripePaymentsH3: 'Paiements Stripe', stripeIntroText: 'Connectez votre propre compte Stripe pour accepter les paiements par carte directement — les paiements des clients vont directement sur votre compte, pas via Hadam.', stripeConnectBtn: 'Connecter Stripe', stripeContinueOnboardingBtn: 'Poursuivre la configuration Stripe', stripeEnableAsPaymentMethod: 'Accepter les paiements Stripe dans cette boutique', stripeStatus_not_connected: 'Non connecté', stripeStatus_pending: 'Configuration incomplète', stripeStatus_connected: 'Connecté', stripeStatus_restricted: 'Action requise', stripeNotConnectedHint: 'Connectez un compte Stripe pour commencer à accepter les paiements par carte.', stripePendingHint: "Vous avez commencé à connecter Stripe, mais la configuration n'est pas terminée — reprenez là où vous vous étiez arrêté.", stripeConnectedHint: 'Votre compte Stripe est entièrement connecté et prêt à accepter des paiements.', stripeRestrictedHint: 'Stripe a besoin de plus d\u2019informations avant que ce compte puisse accepter des paiements — poursuivre la configuration indiquera ce qui est requis.', stripeReturnMsg: 'Bon retour — nous vérifions le statut de votre connexion Stripe.', stripeRefreshMsg: 'Ce lien de configuration Stripe a expiré. Cliquez ci-dessous pour en obtenir un nouveau.', orPaySimulated: 'Ou utilisez le paiement de test simulé ci-dessous :', stripePaymentSubmittedMsg: 'Paiement soumis — confirmation avec Stripe en cours.',
+    stripePaymentsH3: 'Paiements Stripe', stripeIntroText: 'Connectez votre propre compte Stripe pour accepter les paiements par carte directement — les paiements des clients vont directement sur votre compte, pas via Hadam.', stripeConnectBtn: 'Connecter Stripe', stripeContinueOnboardingBtn: 'Poursuivre la configuration Stripe', stripeEnableAsPaymentMethod: 'Accepter les paiements Stripe dans cette boutique', stripeStatus_not_connected: 'Non connecté', stripeStatus_pending: 'Configuration incomplète', stripeStatus_connected: 'Connecté', stripeStatus_restricted: 'Action requise', stripeNotConnectedHint: 'Connectez un compte Stripe pour commencer à accepter les paiements par carte.', stripePendingHint: "Vous avez commencé à connecter Stripe, mais la configuration n'est pas terminée — reprenez là où vous vous étiez arrêté.", stripeConnectedHint: 'Votre compte Stripe est entièrement connecté et prêt à accepter des paiements.', stripeRestrictedHint: 'Stripe a besoin de plus d\u2019informations avant que ce compte puisse accepter des paiements — poursuivre la configuration indiquera ce qui est requis.', stripeReturnMsg: 'Bon retour — nous vérifions le statut de votre connexion Stripe.', stripeRefreshMsg: 'Ce lien de configuration Stripe a expiré. Cliquez ci-dessous pour en obtenir un nouveau.', orPaySimulated: 'Ou utilisez le paiement de test simulé ci-dessous :', stripePaymentSubmittedMsg: 'Paiement soumis — confirmation avec Stripe en cours.', payWithPaypal: 'Payer avec PayPal', payWithCash: 'Payer en espèces', cashPaymentHint: 'Payez en espèces à la réception ou à la collecte de votre commande.', cashOrderPlacedMsg: 'Commande passée — payez en espèces à la réception.', confirmCashReceivedBtn: 'Confirmer réception espèces', cashConfirmedLabel: 'Espèces confirmées', confirmCashReceivedConfirm: 'Confirmez-vous avoir reçu le paiement en espèces pour cette commande ?', searchOrdersPlaceholder: 'Rechercher par ID de commande, client ou code produit', noOrdersMatchSearch: 'Aucune commande ne correspond à votre recherche.', searchMyOrdersPlaceholder: 'Rechercher par ID de commande ou code produit', payWithBankTransfer: 'Payer par virement bancaire', bankTransferPaymentHint: 'Passez votre commande pour recevoir nos coordonnées bancaires et un numéro de référence pour votre virement.', bankTransferOrderPlacedMsg: 'Commande passée — effectuez votre virement bancaire en utilisant la référence ci-dessous.', bankNameLabel: 'Nom de la banque', accountNameLabel: 'Nom du compte', accountNumberLabel: 'Numéro de compte', sortCodeLabel: 'Code guichet', ibanLabel: 'IBAN', amountLabel: 'Montant', referenceLabel: 'Référence (obligatoire)', bankTransferReferenceHint: 'Veuillez inclure exactement cette référence avec votre virement afin que nous puissions le rapprocher de votre commande.', confirmBankTransferBtn: 'Confirmer réception du virement', confirmBankTransferConfirm: 'Confirmez-vous avoir reçu ce virement bancaire, identifié par sa référence ?', bankTransferConfirmedLabel: 'Virement confirmé', cancelPendingBtn: 'Annuler', cancelPendingConfirm: 'Annuler ce paiement en attente ? La commande ne sera pas réglée.', paymentCancelledLabel: 'Annulé',
     storeDetailsH3: 'Détails de la boutique',
     alreadyDownloadedLabel: 'Téléchargé', noRefundAfterDownloadHint: 'Non éligible au remboursement — ce produit numérique a déjà été téléchargé.',
     languageCodeLabel: 'Code de langue', maxDownloadsLabel: 'Téléchargements max', descriptionLabel: 'Description',
@@ -680,6 +706,19 @@ const I18N = {
     loginToMessageStore: "Connectez-vous pour envoyer un message à cette boutique, ou utilisez Mes commandes une fois que vous en avez une pour poser une question directement.",
     contactSentMsg: 'Envoyé — la boutique vous répondra.',
     storeFooterText: 'Propulsé par Hadam Marketplace — la boutique numérique mondiale et la plateforme de marketplace multi-boutiques. © 2026 Hadam Marketplace. Tous droits réservés.',
+    paypalPaymentsH3: 'PayPal', paypalReturnMsg: 'Bon retour — vérification du statut de connexion PayPal en cours.',
+    paypalIntroText: 'Acceptez les paiements PayPal directement via votre boutique, grâce aux Partner Referrals de PayPal.',
+    paypalStatus_not_connected: 'Non connecté', paypalStatus_pending: 'En attente', paypalStatus_connected: 'Connecté', paypalStatus_restricted: 'Restreint',
+    paypalNotConnectedHint: 'Connectez votre compte PayPal pour commencer à accepter les paiements PayPal.',
+    paypalPendingHint: 'La connexion est en cours — terminez de connecter votre compte PayPal pour continuer.',
+    paypalRestrictedHint: 'PayPal a restreint ce compte. Les paiements ne peuvent pas être acceptés tant que cela n\'est pas résolu avec PayPal.',
+    paypalConnectedHint: 'Votre compte PayPal est connecté et prêt à accepter des paiements.',
+    paypalConnectBtn: 'Connecter PayPal', paypalContinueOnboardingBtn: 'Continuer la connexion', paypalEnableAsPaymentMethod: 'Accepter PayPal comme moyen de paiement',
+    cashPaymentsH3: 'Paiement à la livraison', cashIntroText: 'Permettez aux clients de passer commande et de payer en espèces à la réception ou au retrait. Aucune configuration de compte externe nécessaire.',
+    cashEnableAsPaymentMethod: 'Accepter le paiement en espèces à la livraison',
+    bankTransferPaymentsH3: 'Virement bancaire', bankTransferIntroText: 'Permettez aux clients de passer commande et de payer par virement bancaire direct, avec un numéro de référence que vous confirmez manuellement. Aucune configuration de compte externe nécessaire.',
+    bankTransferEnableAsPaymentMethod: 'Accepter le virement bancaire',
+    enterShippingAddressToContinue: 'Saisissez votre adresse de livraison ci-dessus pour charger le formulaire de paiement.',
   },
 };
 function t(key) { return (I18N[state.lang] && I18N[state.lang][key]) || I18N.en[key] || key; }
@@ -1346,6 +1385,13 @@ async function boot() {
     state._stripeOnboardingReturn = stripeOnboardingParam; // 'return' or 'refresh' — read once by the settings panel to show the right message, then cleared
     return go('admin');
   }
+  const paypalOnboardingParam = new URLSearchParams(location.search).get('paypalOnboarding');
+  if (paypalOnboardingParam && state.user && state.user.role === 'admin') {
+    history.replaceState(null, '', location.pathname);
+    state.adminTab = 'settings';
+    state._paypalOnboardingReturn = paypalOnboardingParam; // only ever 'return' — PayPal's connect route has no separate refresh URL like Stripe's
+    return go('admin');
+  }
   go(state.user && state.user.role === 'admin' ? 'admin' : state.user && state.user.role === 'employee' ? 'employee' : 'welcome');
 }
 boot();
@@ -1482,8 +1528,31 @@ async function renderCart() {
       ${paymentMethods.stripeEnabled ? `
       <div id="stripePaymentPanel" style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;">
         <div id="stripeElementsMount"></div>
-        <button class="btn full" id="stripePayBtn" onclick="payWithStripe()" style="margin-top:10px;">${t('pay')} $${total.toFixed(2)} (Stripe)</button>
+        <button class="btn full" id="stripePayBtn" onclick="payWithStripe()" style="margin-top:10px;" disabled>${t('pay')} $${total.toFixed(2)} (Stripe)</button>
         <div id="stripeCheckoutMsg"></div>
+      </div>
+      <div class="hint" style="margin-bottom:10px;">${t('orPaySimulated') || 'Or use the simulated test payment below:'}</div>
+            ` : ''}
+      ${paymentMethods.paypalEnabled ? `
+      <div id="paypalPaymentPanel" style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;">
+        <button class="btn full" id="paypalPayBtn" onclick="payWithPaypal()" style="background:#ffc439;color:#111;border:none;">${t('payWithPaypal') || 'Pay with PayPal'}</button>
+        <div id="paypalCheckoutMsg"></div>
+      </div>
+      <div class="hint" style="margin-bottom:10px;">${t('orPaySimulated') || 'Or use the simulated test payment below:'}</div>
+      ` : ''}
+      ${paymentMethods.cashEnabled ? `
+      <div id="cashPaymentPanel" style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;">
+        <div class="hint" style="margin-bottom:10px;">${t('cashPaymentHint') || 'Pay with cash when you receive or collect your order.'}</div>
+        <button class="btn full" id="cashPayBtn" onclick="payWithCash()">${t('payWithCash') || 'Pay with cash'}</button>
+        <div id="cashCheckoutMsg"></div>
+      </div>
+      <div class="hint" style="margin-bottom:10px;">${t('orPaySimulated') || 'Or use the simulated test payment below:'}</div>
+      ` : ''}
+      ${paymentMethods.bankTransferEnabled ? `
+      <div id="bankTransferPaymentPanel" style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;">
+        <div class="hint" style="margin-bottom:10px;">${t('bankTransferPaymentHint') || 'Place your order to receive our bank details and a reference number for your transfer.'}</div>
+        <button class="btn full" id="bankTransferPayBtn" onclick="payWithBankTransfer()">${t('payWithBankTransfer') || 'Pay by bank transfer'}</button>
+        <div id="bankTransferCheckoutMsg"></div>
       </div>
       <div class="hint" style="margin-bottom:10px;">${t('orPaySimulated') || 'Or use the simulated test payment below:'}</div>
       ` : ''}
@@ -1498,7 +1567,38 @@ async function renderCart() {
       <div class="hint">Simulated payment provider. Use <code>4111 1111 1111 1111</code> for success or <code>0000 0000 0000 0000</code> to preview a decline.</div>
     </div>`;
   wireCardFieldValidation('');
-  if (paymentMethods.stripeEnabled) initStripeCheckout(paymentMethods.publishableKey);
+  if (paymentMethods.stripeEnabled) {
+    // Stripe needs an order (and therefore a shipping address, when the
+    // cart requires one) to exist before it can create the PaymentIntent
+    // this form mounts against. Calling initStripeCheckout() unconditionally
+    // here — before the shopper has typed anything — always failed with a
+    // "shipping address required" 400, permanently breaking the Pay button
+    // (payWithStripe() never retries, it just checks whether init already
+    // succeeded). Instead: only auto-init when no address is actually
+    // required right now, or one's already present; otherwise wait for the
+    // shopper to actually provide it.
+    const shipAddrElNow = document.getElementById('shipAddr');
+    const deliveryElNow = document.getElementById('deliveryMethod');
+    const addressCurrentlyNeeded = needsShipping && !(deliveryElNow && deliveryElNow.value === 'pickup');
+    if (!addressCurrentlyNeeded || (shipAddrElNow && shipAddrElNow.value.trim())) {
+      initStripeCheckout(paymentMethods.publishableKey);
+    } else {
+      const mountEl = document.getElementById('stripeElementsMount');
+      if (mountEl) mountEl.innerHTML = `<div class="hint">${t('enterShippingAddressToContinue') || 'Enter your shipping address above to load the payment form.'}</div>`;
+      let stripeInitStarted = false;
+      const tryInitStripeOnceAddressReady = () => {
+        if (stripeInitStarted) return;
+        const addr = shipAddrElNow ? shipAddrElNow.value.trim() : '';
+        const pickup = deliveryElNow && deliveryElNow.value === 'pickup';
+        if (addr || pickup) { stripeInitStarted = true; initStripeCheckout(paymentMethods.publishableKey); }
+      };
+      if (shipAddrElNow) {
+        shipAddrElNow.addEventListener('blur', tryInitStripeOnceAddressReady);
+        shipAddrElNow.addEventListener('input', tryInitStripeOnceAddressReady);
+      }
+      if (deliveryElNow) deliveryElNow.addEventListener('change', tryInitStripeOnceAddressReady);
+    }
+  }
 }
 let _stripeElementsInstance = null;
 async function initStripeCheckout(publishableKey) {
@@ -1506,6 +1606,7 @@ async function initStripeCheckout(publishableKey) {
   const deliveryEl = document.getElementById('deliveryMethod');
   const items = state.cart.map(c => ({ productId: c.productId, qty: c.qty }));
   const msgEl = document.getElementById('stripeCheckoutMsg');
+  const payBtn = document.getElementById('stripePayBtn');
   try {
     const { clientSecret, orderId } = await api('/api/orders/stripe', { method: 'POST', body: JSON.stringify({ items, shippingAddress: shipAddrEl ? shipAddrEl.value : undefined, deliveryMethod: deliveryEl ? deliveryEl.value : undefined }) });
     state._stripeOrderId = orderId;
@@ -1513,6 +1614,13 @@ async function initStripeCheckout(publishableKey) {
     const stripe = window.Stripe(publishableKey);
     _stripeElementsInstance = stripe.elements({ clientSecret });
     const paymentElement = _stripeElementsInstance.create('payment');
+    // The Pay button starts disabled (see the template above) because
+    // clicking it before Stripe's iframe has actually finished loading
+    // fails with "We could not retrieve data from the specified Element
+    // ... the ready event has been emitted" — mount() returning doesn't
+    // mean the Element is interactive yet. Only re-enable once Stripe
+    // itself confirms readiness.
+    paymentElement.on('ready', () => { if (payBtn) payBtn.disabled = false; });
     paymentElement.mount('#stripeElementsMount');
     state._stripeInstance = stripe;
   } catch (e) {
@@ -1525,7 +1633,8 @@ async function payWithStripe() {
   if (!state._stripeInstance || !_stripeElementsInstance) { msgEl.innerHTML = `<div class="msg error">Payment form did not load correctly — please refresh and try again.</div>`; return; }
   btn.disabled = true;
   try {
-    const { error } = await state._stripeInstance.confirmPayment({ elements: _stripeElementsInstance, redirect: 'if_required' });
+    const { error } = await state._stripeInstance.confirmPayment({ elements: _stripeElementsInstance, redirect: 'if_required', confirmParams: { return_url:    
+    `${window.location.origin}/?payment=return&orderId=${state._stripeOrderId}` } });
     if (error) { msgEl.innerHTML = `<div class="msg error">${esc(error.message)}</div>`; btn.disabled = false; return; }
     // Confirmation succeeding here means Stripe accepted the card — but per
     // the architecture's own core rule, this does NOT mean the order is
@@ -1534,6 +1643,72 @@ async function payWithStripe() {
     msgEl.innerHTML = `<div class="msg success">${t('stripePaymentSubmittedMsg') || 'Payment submitted — confirming with Stripe now.'}</div>`;
     state.cart = [];
     setTimeout(() => go('orders'), 1500);
+  }catch (e) {
+    msgEl.innerHTML = `<div class="msg error">${esc(e.message)}</div>`;
+    btn.disabled = false;
+  }
+}
+async function payWithPaypal() {
+  const btn = document.getElementById('paypalPayBtn');
+  const msgEl = document.getElementById('paypalCheckoutMsg');
+  const shipAddrEl = document.getElementById('shipAddr');
+  const deliveryEl = document.getElementById('deliveryMethod');
+  btn.disabled = true;
+  try {
+    const items = state.cart.map(c => ({ productId: c.productId, qty: c.qty }));
+    const result = await api('/api/orders/paypal', { method: 'POST', body: JSON.stringify({ items, shippingAddress: shipAddrEl ? shipAddrEl.value : undefined, deliveryMethod: deliveryEl ? deliveryEl.value : undefined }) });
+    if (result.approveUrl) {
+      window.location.href = result.approveUrl;
+      return;
+    }
+    msgEl.innerHTML = `<div class="msg error">Could not get a PayPal approval link — please try again.</div>`;
+    btn.disabled = false;
+  } catch (e) {
+    msgEl.innerHTML = `<div class="msg error">${esc(e.message)}</div>`;
+    btn.disabled = false;
+  }
+}
+async function payWithCash() {
+  const btn = document.getElementById('cashPayBtn');
+  const msgEl = document.getElementById('cashCheckoutMsg');
+  const shipAddrEl = document.getElementById('shipAddr');
+  const deliveryEl = document.getElementById('deliveryMethod');
+  btn.disabled = true;
+  try {
+    const items = state.cart.map(c => ({ productId: c.productId, qty: c.qty }));
+    const result = await api('/api/orders/cash', { method: 'POST', body: JSON.stringify({ items, shippingAddress: shipAddrEl ? shipAddrEl.value : undefined, deliveryMethod: deliveryEl ? deliveryEl.value : undefined }) });
+    msgEl.innerHTML = `<div class="msg success">${esc(result.message || t('cashOrderPlacedMsg') || 'Order placed — pay with cash when you receive/collect it.')}</div>`;
+    state.cart = [];
+    setTimeout(() => go('orders'), 1500);
+  } catch (e) {
+    msgEl.innerHTML = `<div class="msg error">${esc(e.message)}</div>`;
+    btn.disabled = false;
+  }
+}
+async function payWithBankTransfer() {
+  const btn = document.getElementById('bankTransferPayBtn');
+  const msgEl = document.getElementById('bankTransferCheckoutMsg');
+  const shipAddrEl = document.getElementById('shipAddr');
+  const deliveryEl = document.getElementById('deliveryMethod');
+  btn.disabled = true;
+  try {
+    const items = state.cart.map(c => ({ productId: c.productId, qty: c.qty }));
+    const result = await api('/api/orders/bank-transfer', { method: 'POST', body: JSON.stringify({ items, shippingAddress: shipAddrEl ? shipAddrEl.value : undefined, deliveryMethod: deliveryEl ? deliveryEl.value : undefined }) });
+    const bd = result.bankDetails || {};
+    const detailRow = (label, value) => value ? `<div style="display:flex;justify-content:space-between;padding:4px 0;"><span style="color:var(--text-dim);">${esc(label)}</span><strong>${esc(value)}</strong></div>` : '';
+    msgEl.innerHTML = `
+      <div class="msg success" style="margin-bottom:10px;">${esc(result.message || t('bankTransferOrderPlacedMsg') || 'Order placed — complete your bank transfer using the reference below.')}</div>
+      <div class="panel" style="background:var(--bg-alt, rgba(0,0,0,0.03));">
+        ${detailRow(t('bankNameLabel') || 'Bank name', bd.bankName)}
+        ${detailRow(t('accountNameLabel') || 'Account name', bd.accountName)}
+        ${detailRow(t('accountNumberLabel') || 'Account number', bd.accountNumber)}
+        ${detailRow(t('sortCodeLabel') || 'Sort code', bd.sortCode)}
+        ${detailRow(t('ibanLabel') || 'IBAN', bd.iban)}
+        <div style="display:flex;justify-content:space-between;padding:8px 0 4px;border-top:1px solid var(--border);margin-top:6px;"><span style="color:var(--text-dim);">${t('amountLabel') || 'Amount'}</span><strong>$${Number(result.amount).toFixed(2)}</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0;"><span style="color:var(--text-dim);">${t('referenceLabel') || 'Reference (required)'}</span><strong style="font-size:16px;">${esc(result.reference)}</strong></div>
+      </div>
+      <div class="hint" style="margin-top:8px;">${t('bankTransferReferenceHint') || 'Please include this exact reference with your transfer so we can match it to your order.'}</div>`;
+    state.cart = [];
   } catch (e) {
     msgEl.innerHTML = `<div class="msg error">${esc(e.message)}</div>`;
     btn.disabled = false;
@@ -2028,9 +2203,20 @@ async function renderSell() {
 async function renderOrders() {
   const el = document.getElementById('ordersContent');
   const { orders } = await api('/api/orders/mine');
+  state._myOrdersCache = orders;
   el.innerHTML = `
-    <h2 class="section-title">${t('myOrdersTitle')}</h2>` + (orders.length === 0 ? `<div class="empty">${t('noOrdersYet')}</div>` :
-    orders.map(o => `
+    <h2 class="section-title">${t('myOrdersTitle')}</h2>
+    ${orders.length === 0 ? `<div class="empty">${t('noOrdersYet')}</div>` : `<div class="field" style="max-width:320px;margin-bottom:14px;">
+      <input id="myOrdersSearch" type="text" placeholder="${t('searchMyOrdersPlaceholder') || 'Search by order ID or product code'}" oninput="filterMyOrders(this.value)">
+    </div>
+    <div id="myOrdersListWrap"></div>`}`;
+  if (orders.length > 0) renderMyOrdersList(orders);
+}
+function renderMyOrdersList(orders) {
+  const wrap = document.getElementById('myOrdersListWrap');
+  if (!wrap) return;
+  if (orders.length === 0) { wrap.innerHTML = `<div class="empty">${t('noOrdersMatchSearch') || 'No orders match your search.'}</div>`; return; }
+  wrap.innerHTML = orders.map(o => `
       <div class="order-card">
         <div class="oh"><span>${o.id} · ${localeDate(new Date(o.createdAt))}</span><span class="status-pill ${o.paymentStatus}">${o.paymentStatus}</span> <span class="status-pill ${o.status}">${t('orderStatus_'+o.status)}</span></div>
         ${o.items.map(i => `
@@ -2043,7 +2229,17 @@ async function renderOrders() {
             </span>
           </div>`).join('')}
         <div class="order-item" style="font-weight:700;"><span>${t('total')}</span><span class="price">$${o.total.toFixed(2)}</span></div>
-      </div>`).join(''));
+      </div>`).join('');
+}
+function filterMyOrders(query) {
+  const all = state._myOrdersCache || [];
+  const q = (query || '').trim().toLowerCase();
+  if (!q) { renderMyOrdersList(all); return; }
+  const filtered = all.filter(o =>
+    o.id.toLowerCase().includes(q) ||
+    o.items.some(i => i.sku && i.sku.toLowerCase().includes(q))
+  );
+  renderMyOrdersList(filtered);
 }
 async function requestRefund(orderId, productId) {
   const reason = prompt('Why are you requesting a refund? (optional)') || '';
@@ -2429,12 +2625,13 @@ async function renderAdminTab() {
       </tbody></table>`;
   } else if (state.adminTab === 'orders') {
     const { orders } = await api('/api/admin/orders');
-    body.innerHTML = `<table><thead><tr><th>${t('idCol')}</th><th>${t('clientCol')}</th><th>${t('productCodeCol')}</th><th>${t('itemsCol')}</th><th>${t('totalCol')}</th><th>${t('statusCol')}</th><th>${t('orderStatusLabel')}</th><th>${t('dateCol')}</th></tr></thead><tbody>
-      ${orders.map(o=>`<tr><td>${o.id}</td><td>${esc(o.clientEmail)}</td><td>${o.items.map(i=>i.sku?esc(i.sku):'—').join(', ')}</td><td>${o.items.length}</td><td>$${o.total.toFixed(2)}</td>
-        <td><span class="status-pill ${o.paymentStatus}">${o.paymentStatus}</span></td>
-        <td><select onchange="updateOrderStatus('${o.id}', this.value)">${ORDER_STATUSES.map(s => `<option value="${s}" ${o.status===s?'selected':''}>${t('orderStatus_'+s)}</option>`).join('')}</select></td>
-        <td>${localeDate(new Date(o.createdAt))}</td></tr>`).join('')}
-      </tbody></table>`;
+    state._adminOrdersCache = orders;
+    body.innerHTML = `
+      <div class="field" style="max-width:320px;margin-bottom:12px;">
+        <input id="adminOrdersSearch" type="text" placeholder="${t('searchOrdersPlaceholder') || 'Search by order ID, client, or product code'}" oninput="filterAdminOrders(this.value)">
+      </div>
+      <div id="adminOrdersTableWrap"></div>`;
+    renderAdminOrdersTable(orders);
   } else if (state.adminTab === 'reports') {
     if (!state._reportRange) {
       const to = Date.now();
@@ -2497,8 +2694,13 @@ async function renderAdminTab() {
     state._editingStoreInfo = info;
     const existingStoreLangs = info.translations ? Object.keys(info.translations) : [];
     const stripeStatus = await api('/api/admin/stripe/status');
+    const paypalStatus = await api('/api/admin/paypal/status').catch(() => ({ enabled: false, onboardingStatus: 'not_connected' }));
+    const cashStatus = await api('/api/admin/cash/status').catch(() => ({ enabled: false }));
+    const bankTransferStatus = await api('/api/admin/bank-transfer/status').catch(() => ({ enabled: false }));
     const stripeReturnFlag = state._stripeOnboardingReturn;
     state._stripeOnboardingReturn = null; // shown once, then cleared
+    const paypalReturnFlag = state._paypalOnboardingReturn;
+    state._paypalOnboardingReturn = null;
     body.innerHTML = `
       <div class="panel" style="max-width:560px;">
         <h3>${t('subscriptionH3')}</h3>
@@ -2529,6 +2731,35 @@ async function renderAdminTab() {
           ${stripeStatus.onboardingStatus !== 'connected' ? `<button class="btn" onclick="connectStripe()">${stripeStatus.onboardingStatus === 'not_connected' ? t('stripeConnectBtn') : t('stripeContinueOnboardingBtn')}</button>` : ''}
           ${stripeStatus.onboardingStatus === 'connected' ? `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="stripeEnabledToggle" ${stripeStatus.enabled ? 'checked' : ''} onchange="toggleStripeEnabled(this.checked)"> ${t('stripeEnableAsPaymentMethod')}</label>` : ''}
         </div>
+      </div>
+      <div class="panel" style="max-width:560px;margin-top:18px;">
+        <h3>${t('paypalPaymentsH3') || 'PayPal'}</h3>
+        ${paypalReturnFlag === 'return' ? `<div class="msg" style="background:var(--panel-2);border-radius:8px;padding:10px;margin-bottom:10px;">${t('paypalReturnMsg') || 'Welcome back — checking your PayPal onboarding status now.'}</div>` : ''}
+        <p style="color:var(--text-dim);font-size:13px;">${t('paypalIntroText') || 'Accept PayPal payments directly through your store, powered by PayPal Partner Referrals.'}</p>
+        <div style="display:flex;align-items:center;gap:10px;margin:10px 0;">
+          <span class="badge ${paypalStatus.onboardingStatus === 'connected' ? 'badge-success' : paypalStatus.onboardingStatus === 'restricted' ? 'badge-danger' : 'badge-warn'}">${t('paypalStatus_' + paypalStatus.onboardingStatus) || paypalStatus.onboardingStatus}</span>
+        </div>
+        ${paypalStatus.onboardingStatus === 'not_connected' ? `<p style="color:var(--text-dim);font-size:13px;">${t('paypalNotConnectedHint') || 'Connect your PayPal account to start accepting PayPal payments.'}</p>` : ''}
+        ${paypalStatus.onboardingStatus === 'pending' ? `<p style="color:var(--text-dim);font-size:13px;">${t('paypalPendingHint') || 'Onboarding is in progress — finish connecting your PayPal account to continue.'}</p>` : ''}
+        ${paypalStatus.onboardingStatus === 'restricted' ? `<p style="color:var(--text-dim);font-size:13px;">${t('paypalRestrictedHint') || 'PayPal has restricted this account. Payments cannot be accepted until this is resolved with PayPal.'}</p>` : ''}
+        ${paypalStatus.onboardingStatus === 'connected' ? `<p style="color:var(--text-dim);font-size:13px;">${t('paypalConnectedHint') || 'Your PayPal account is connected and ready to accept payments.'}</p>` : ''}
+        <div id="paypalMsg"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px;">
+          ${paypalStatus.onboardingStatus !== 'connected' ? `<button class="btn" onclick="connectPaypal()">${paypalStatus.onboardingStatus === 'not_connected' ? (t('paypalConnectBtn') || 'Connect PayPal') : (t('paypalContinueOnboardingBtn') || 'Continue onboarding')}</button>` : ''}
+          ${paypalStatus.onboardingStatus === 'connected' ? `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="paypalEnabledToggle" ${paypalStatus.enabled ? 'checked' : ''} onchange="togglePaypalEnabled(this.checked)"> ${t('paypalEnableAsPaymentMethod') || 'Accept PayPal as a payment method'}</label>` : ''}
+        </div>
+      </div>
+      <div class="panel" style="max-width:560px;margin-top:18px;">
+        <h3>${t('cashPaymentsH3') || 'Cash on delivery'}</h3>
+        <p style="color:var(--text-dim);font-size:13px;">${t('cashIntroText') || 'Let customers place an order and pay in cash when they receive or collect it. No external account setup needed.'}</p>
+        <div id="cashSettingsMsg"></div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px;"><input type="checkbox" id="cashEnabledToggle" ${cashStatus.enabled ? 'checked' : ''} onchange="toggleCashEnabled(this.checked)"> ${t('cashEnableAsPaymentMethod') || 'Accept cash on delivery'}</label>
+      </div>
+      <div class="panel" style="max-width:560px;margin-top:18px;">
+        <h3>${t('bankTransferPaymentsH3') || 'Bank transfer'}</h3>
+        <p style="color:var(--text-dim);font-size:13px;">${t('bankTransferIntroText') || 'Let customers place an order and pay by direct bank transfer, using a reference number you confirm manually. No external account setup needed.'}</p>
+        <div id="bankTransferSettingsMsg"></div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px;"><input type="checkbox" id="bankTransferEnabledToggle" ${bankTransferStatus.enabled ? 'checked' : ''} onchange="toggleBankTransferEnabled(this.checked)"> ${t('bankTransferEnableAsPaymentMethod') || 'Accept bank transfer'}</label>
       </div>
       <div class="panel" style="max-width:560px;margin-top:18px;">
         <h3>${t('storeDetailsH3')}</h3>
@@ -2666,6 +2897,13 @@ async function connectStripe() {
     location.href = onboardingUrl; // hands off to Stripe's own hosted onboarding form entirely — nothing here collects or sees any of that information
   } catch (e) { msg.innerHTML = `<div class="msg error">${esc(e.message)}</div>`; }
 }
+async function connectPaypal() {
+  const msg = document.getElementById('paypalMsg');
+  try {
+    const { onboardingUrl } = await api('/api/admin/paypal/connect', { method: 'POST' });
+    location.href = onboardingUrl; // hands off to PayPal's own hosted Partner Referral onboarding entirely
+  } catch (e) { msg.innerHTML = `<div class="msg error">${esc(e.message)}</div>`; }
+}
 async function toggleStripeEnabled(enabled) {
   const msg = document.getElementById('stripeMsg');
   try {
@@ -2674,6 +2912,36 @@ async function toggleStripeEnabled(enabled) {
   } catch (e) {
     msg.innerHTML = `<div class="msg error">${esc(e.message)}</div>`;
     document.getElementById('stripeEnabledToggle').checked = !enabled; // revert the visual toggle since the actual change didn't take
+  }
+}
+async function togglePaypalEnabled(enabled) {
+  const msg = document.getElementById('paypalMsg');
+  try {
+    await api('/api/admin/paypal/enable', { method: 'PATCH', body: JSON.stringify({ enabled }) });
+    msg.innerHTML = `<div class="msg success">${t('savedMsg')}</div>`;
+  } catch (e) {
+    msg.innerHTML = `<div class="msg error">${esc(e.message)}</div>`;
+    document.getElementById('paypalEnabledToggle').checked = !enabled;
+  }
+}
+async function toggleCashEnabled(enabled) {
+  const msg = document.getElementById('cashSettingsMsg');
+  try {
+    await api('/api/admin/cash/enable', { method: 'PATCH', body: JSON.stringify({ enabled }) });
+    msg.innerHTML = `<div class="msg success">${t('savedMsg')}</div>`;
+  } catch (e) {
+    msg.innerHTML = `<div class="msg error">${esc(e.message)}</div>`;
+    document.getElementById('cashEnabledToggle').checked = !enabled;
+  }
+}
+async function toggleBankTransferEnabled(enabled) {
+  const msg = document.getElementById('bankTransferSettingsMsg');
+  try {
+    await api('/api/admin/bank-transfer/enable', { method: 'PATCH', body: JSON.stringify({ enabled }) });
+    msg.innerHTML = `<div class="msg success">${t('savedMsg')}</div>`;
+  } catch (e) {
+    msg.innerHTML = `<div class="msg error">${esc(e.message)}</div>`;
+    document.getElementById('bankTransferEnabledToggle').checked = !enabled;
   }
 }
 async function saveAccessSettings() {
@@ -3257,6 +3525,66 @@ const ORDER_STATUSES = ['pending', 'confirmed', 'processing', 'shipped', 'delive
 async function updateOrderStatus(orderId, status) {
   try { await api(`/api/employee/orders/${orderId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }); }
   catch (e) { alert(e.message); renderAdminTab(); }
+}
+async function confirmCashPayment(paymentId) {
+  if (!confirm(t('confirmCashReceivedConfirm') || 'Confirm you have received cash payment for this order?')) return;
+  try {
+    await api(`/api/admin/payments/${paymentId}/confirm-cash`, { method: 'POST' });
+    renderAdminTab();
+  } catch (e) { alert(e.message); }
+}
+async function confirmBankTransferPayment(paymentId) {
+  if (!confirm(t('confirmBankTransferConfirm') || 'Confirm you have received this bank transfer, matched by its reference number?')) return;
+  try {
+    await api(`/api/admin/payments/${paymentId}/confirm-bank-transfer`, { method: 'POST' });
+    renderAdminTab();
+  } catch (e) { alert(e.message); }
+}
+async function cancelPendingPayment(paymentId) {
+  if (!confirm(t('cancelPendingConfirm') || 'Cancel this pending payment? The order will not be settled.')) return;
+  try {
+    await api(`/api/admin/payments/${paymentId}/cancel-pending`, { method: 'POST' });
+    renderAdminTab();
+  } catch (e) { alert(e.message); }
+}
+function paymentActionCell(o) {
+  if (o.paymentMethod === 'cash') {
+    return o.paymentProviderStatus === 'pending'
+      ? `<button class="btn sm" onclick="confirmCashPayment('${o.paymentId}')">${t('confirmCashReceivedBtn') || 'Confirm cash received'}</button>`
+      : `<span class="status-pill success">${t('cashConfirmedLabel') || 'Cash confirmed'}</span>`;
+  }
+  if (o.paymentMethod === 'bank_transfer') {
+    if (o.paymentProviderStatus === 'pending') {
+      return `<div style="font-size:12px;color:var(--text-dim);margin-bottom:4px;">${t('referenceLabel') || 'Reference'}: <strong>${esc(o.paymentReference || '—')}</strong></div>
+        <button class="btn sm" onclick="confirmBankTransferPayment('${o.paymentId}')">${t('confirmBankTransferBtn') || 'Confirm transfer received'}</button>
+        <button class="btn sm ghost" style="margin-top:4px;" onclick="cancelPendingPayment('${o.paymentId}')">${t('cancelPendingBtn') || 'Cancel'}</button>`;
+    }
+    if (o.paymentProviderStatus === 'cancelled') return `<span class="status-pill">${t('paymentCancelledLabel') || 'Cancelled'}</span>`;
+    return `<span class="status-pill success">${t('bankTransferConfirmedLabel') || 'Transfer confirmed'}</span>`;
+  }
+  return '';
+}
+function renderAdminOrdersTable(orders) {
+  const wrap = document.getElementById('adminOrdersTableWrap');
+  if (!wrap) return;
+  wrap.innerHTML = `<table><thead><tr><th>${t('idCol')}</th><th>${t('clientCol')}</th><th>${t('productCodeCol')}</th><th>${t('itemsCol')}</th><th>${t('totalCol')}</th><th>${t('statusCol')}</th><th>${t('orderStatusLabel')}</th><th>${t('dateCol')}</th><th></th></tr></thead><tbody>
+    ${orders.map(o=>`<tr><td>${o.id}</td><td>${esc(o.clientEmail)}</td><td>${o.items.map(i=>i.sku?esc(i.sku):'—').join(', ')}</td><td>${o.items.length}</td><td>$${o.total.toFixed(2)}</td>
+      <td><span class="status-pill ${o.paymentStatus}">${o.paymentStatus}</span></td>
+      <td><select onchange="updateOrderStatus('${o.id}', this.value)">${ORDER_STATUSES.map(s => `<option value="${s}" ${o.status===s?'selected':''}>${t('orderStatus_'+s)}</option>`).join('')}</select></td>
+      <td>${localeDate(new Date(o.createdAt))}</td>
+      <td>${paymentActionCell(o)}</td></tr>`).join('')}
+    </tbody></table>${orders.length === 0 ? `<div class="empty">${t('noOrdersMatchSearch') || 'No orders match your search.'}</div>` : ''}`;
+}
+function filterAdminOrders(query) {
+  const all = state._adminOrdersCache || [];
+  const q = (query || '').trim().toLowerCase();
+  if (!q) { renderAdminOrdersTable(all); return; }
+  const filtered = all.filter(o =>
+    o.id.toLowerCase().includes(q) ||
+    (o.clientEmail && o.clientEmail.toLowerCase().includes(q)) ||
+    o.items.some(i => i.sku && i.sku.toLowerCase().includes(q))
+  );
+  renderAdminOrdersTable(filtered);
 }
 function openCategoryForm(id) {
   const c = id ? state.categories.find(x => x.id === id) : null;

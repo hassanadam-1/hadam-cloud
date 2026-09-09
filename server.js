@@ -158,18 +158,30 @@ function subscriptionAlertLevel(tenant) {
    function body to replace, not a design change.
 ========================================================= */
 async function sendEmail({ to, subject, body, tenantId, type }) {
+  if (AUTH_DRIVER === 'supabase') {
+    const { data, error } = await supabaseAdmin().from('notifications').insert({ tenant_id: tenantId, type, to_email: to, subject, body }).select().maybeSingle();
+    if (error) { console.error('[sendEmail] insert failed:', error.message); return null; }
+    return { id: data.id, tenantId: data.tenant_id, type: data.type, to: data.to_email, subject: data.subject, body: data.body, sentAt: data.created_at };
+  }
   const notification = { id: newId('note'), tenantId, type, to, subject, body, sentAt: Date.now() };
   db.notifications = db.notifications || [];
   db.notifications.push(notification);
   await persist();
   return notification;
 }
-function findUserToNotify(tenantId) {
+async function findUserToNotify(tenantId) {
   // The store's own admin is who gets subscription notices.
+  if (AUTH_DRIVER === 'supabase') {
+    const { data: membership } = await supabaseAdmin().from('tenant_memberships').select('user_id').eq('tenant_id', tenantId).eq('role', 'admin').limit(1).maybeSingle();
+    if (!membership) return null;
+    const { data: authUser } = await supabaseAdmin().auth.admin.getUserById(membership.user_id);
+    if (!authUser || !authUser.user) return null;
+    return { id: membership.user_id, email: authUser.user.email, name: authUser.user.user_metadata?.full_name || authUser.user.email };
+  }
   return db.users.find(u => u.tenantId === tenantId && u.role === 'admin');
 }
 async function sendRenewalReminder(tenant, alertLevel) {
-  const admin = findUserToNotify(tenant.id);
+  const admin = await findUserToNotify(tenant.id);
   if (!admin) return null;
   const lang = await getRecipientLang(admin.email);
   const timeLabelKeys = { '1_month': 'renewalTimeLabel1Month', '2_weeks': 'renewalTimeLabel2Weeks', '1_week': 'renewalTimeLabel1Week' };
@@ -181,7 +193,7 @@ async function sendRenewalReminder(tenant, alertLevel) {
   });
 }
 async function sendRenewedNotice(tenant) {
-  const admin = findUserToNotify(tenant.id);
+  const admin = await findUserToNotify(tenant.id);
   if (!admin) return null;
   const lang = await getRecipientLang(admin.email);
   return sendEmail({
@@ -191,7 +203,7 @@ async function sendRenewedNotice(tenant) {
   });
 }
 async function sendExpiredNotice(tenant) {
-  const admin = findUserToNotify(tenant.id);
+  const admin = await findUserToNotify(tenant.id);
   if (!admin) return null;
   const lang = await getRecipientLang(admin.email);
   return sendEmail({
@@ -250,6 +262,29 @@ async function notifySuperadminsOfContactMessage({ name, email, message }) {
 
 async function checkSubscriptionAlerts() {
   const sent = [];
+  if (AUTH_DRIVER === 'supabase') {
+    const admin = supabaseAdmin();
+    const { data: subs, error } = await admin.from('subscriptions').select('*, tenants(*)').eq('status', 'active');
+    if (error) { console.error('[checkSubscriptionAlerts] fetch failed:', error.message); return sent; }
+    for (const sub of subs || []) {
+      const tenantRow = sub.tenants;
+      if (!tenantRow || tenantRow.status !== 'active' || !sub.expiry_date) continue;
+      const tenant = { id: tenantRow.id, name: tenantRow.name, plan: tenantRow.plan, subscriptionExpiresAt: new Date(sub.expiry_date + 'T00:00:00Z').getTime() };
+      const level = subscriptionAlertLevel(tenant);
+      if (!level) continue;
+      const lastAlertLevel = sub.last_alert_level || null;
+      if (level === 'expired') {
+        if (lastAlertLevel !== 'expired') {
+          sent.push(await sendExpiredNotice(tenant));
+          await admin.from('subscriptions').update({ last_alert_level: 'expired' }).eq('id', sub.id);
+        }
+      } else if (lastAlertLevel !== level) {
+        sent.push(await sendRenewalReminder(tenant, level));
+        await admin.from('subscriptions').update({ last_alert_level: level }).eq('id', sub.id);
+      }
+    }
+    return sent.filter(Boolean);
+  }
   for (const tenant of db.tenants) {
     if (tenant.status !== 'active' || !tenant.subscriptionExpiresAt) continue;
     const level = subscriptionAlertLevel(tenant);
@@ -425,7 +460,7 @@ const API_I18N = {
     platformAccessOnly: 'Platform access only.',
     passwordIncorrect: 'Password is incorrect.',
     orderCreatedNotRetrieved: 'Order was created but could not be retrieved — please check your order history.',
-    orderCreationFailed: 'Order creation failed unexpectedly — please try again.',
+    orderCreationFailed: 'Order creation failed unexpectedly — please try again.', cashOrderPlacedMsg: 'Order placed — pay with cash when you receive/collect it.', bankTransferOrderPlacedMsg: 'Order placed — complete your bank transfer using the reference below.',
     notImplementedSupabaseReset: 'This isn\'t available with the Supabase auth driver — password reset should be completed through the app directly.',
     notAvailableOnStoreSubdomain: 'Not available on a store subdomain.',
     noAccountForEmail: 'No account found with that email.',
@@ -571,7 +606,7 @@ const API_I18N = {
     platformAccessOnly: 'الوصول إلى المنصة فقط.',
     passwordIncorrect: 'كلمة المرور غير صحيحة.',
     orderCreatedNotRetrieved: 'تم إنشاء الطلب لكن تعذر استرجاعه — يرجى مراجعة سجل طلباتك.',
-    orderCreationFailed: 'فشل إنشاء الطلب بشكل غير متوقع — يرجى المحاولة مرة أخرى.',
+    orderCreationFailed: 'فشل إنشاء الطلب بشكل غير متوقع — يرجى المحاولة مرة أخرى.', cashOrderPlacedMsg: 'تم تقديم الطلب — ادفع نقدًا عند الاستلام.', bankTransferOrderPlacedMsg: 'تم تقديم الطلب — أكمل التحويل البنكي باستخدام الرقم المرجعي أدناه.',
     notImplementedSupabaseReset: 'هذا غير متاح مع محرك مصادقة Supabase — يجب إكمال إعادة تعيين كلمة المرور من خلال التطبيق مباشرة.',
     notAvailableOnStoreSubdomain: 'غير متاح على نطاق فرعي لمتجر.',
     noAccountForEmail: 'لا يوجد حساب بهذا البريد الإلكتروني.',
@@ -717,7 +752,7 @@ const API_I18N = {
     platformAccessOnly: 'Accès à la plateforme uniquement.',
     passwordIncorrect: 'Le mot de passe est incorrect.',
     orderCreatedNotRetrieved: "La commande a été créée mais n'a pas pu être récupérée — veuillez consulter votre historique de commandes.",
-    orderCreationFailed: 'La création de la commande a échoué de manière inattendue — veuillez réessayer.',
+    orderCreationFailed: 'La création de la commande a échoué de manière inattendue — veuillez réessayer.', cashOrderPlacedMsg: 'Commande passée — payez en espèces à la réception.', bankTransferOrderPlacedMsg: 'Commande passée — effectuez votre virement bancaire en utilisant la référence ci-dessous.',
     notImplementedSupabaseReset: "Ceci n'est pas disponible avec le pilote d'authentification Supabase — la réinitialisation du mot de passe doit être effectuée directement via l'application.",
     notAvailableOnStoreSubdomain: 'Non disponible sur un sous-domaine de boutique.',
     noAccountForEmail: 'Aucun compte trouvé avec cet e-mail.',
@@ -1041,7 +1076,7 @@ const { sendEmail: sendRealEmail, wrapEmailHtml, EMAIL_I18N, emailT } = require(
 const AUTH_DRIVER = process.env.HADAM_AUTH_DRIVER || 'custom';
 const authSupabase = AUTH_DRIVER === 'supabase' ? require('./lib/auth') : null;
 const { logAuthEvent } = require('./lib/auditLog');
-const { createPayment: createPaymentRecord } = require('./lib/payments');
+const { createPayment: createPaymentRecord, rowToPayment } = require('./lib/payments');
 const stripeConnectLib = require('./lib/stripeConnect');
 /** Lazily constructs the real Stripe client only if STRIPE_SECRET_KEY is
  * actually configured — mirrors the existing pattern for RESEND_API_KEY:
@@ -1134,6 +1169,33 @@ function rowToCategory(row) {
    PLATFORM ROUTES (root domain only — no products live here)
 ========================================================= */
 route('GET', '/api/platform/tenants', { hostScope: 'platform', auth: true, roles: ['superadmin'] }, async (req, res) => {
+  if (AUTH_DRIVER === 'supabase') {
+    const admin = supabaseAdmin();
+    const [{ data: tenantRows, error: tErr }, { data: productRows }, { data: orderRows }, { data: itemRows }, { data: memberRows }] = await Promise.all([
+      admin.from('tenants').select('*'),
+      admin.from('products').select('id, tenant_id'),
+      admin.from('orders').select('id, tenant_id, payment_status'),
+      admin.from('order_items').select('order_id, price, qty, status'),
+      admin.from('tenant_memberships').select('tenant_id'),
+    ]);
+    if (tErr) return send(res, 500, { error: tErr.message });
+    const successfulOrderIds = new Set((orderRows || []).filter(o => o.payment_status === 'success').map(o => o.id));
+    const tenants = (tenantRows || []).map(row => {
+      const t = rowToTenant(row);
+      const tenantOrderIds = new Set((orderRows || []).filter(o => o.tenant_id === row.id).map(o => o.id));
+      const revenue = (itemRows || [])
+        .filter(i => tenantOrderIds.has(i.order_id) && successfulOrderIds.has(i.order_id) && i.status !== 'refunded')
+        .reduce((s, i) => s + i.price * i.qty, 0);
+      return {
+        ...t,
+        productCount: (productRows || []).filter(p => p.tenant_id === row.id).length,
+        orderCount: tenantOrderIds.size,
+        userCount: (memberRows || []).filter(m => m.tenant_id === row.id).length,
+        revenue,
+      };
+    });
+    return send(res, 200, { tenants, baseDomain: BASE_DOMAIN });
+  }
   const tenants = db.tenants.map(t => ({
     ...t,
     productCount: db.products.filter(p => p.tenantId === t.id).length,
@@ -1205,7 +1267,14 @@ route('POST', '/api/platform/run-subscription-checks', { hostScope: 'platform', 
   const sent = await checkSubscriptionAlerts();
   const expiredMembers = await expireLapsedMarketplaceMembers();
   const deliveryRemindersSent = await checkDeliveryConfirmationReminders();
-  send(res, 200, { checked: db.tenants.length, notificationsSent: sent.length, marketplaceMembersExpired: expiredMembers, deliveryRemindersSent });
+  let checked;
+  if (AUTH_DRIVER === 'supabase') {
+    const { count } = await supabaseAdmin().from('tenants').select('*', { count: 'exact', head: true });
+    checked = count || 0;
+  } else {
+    checked = db.tenants.length;
+  }
+  send(res, 200, { checked, notificationsSent: sent.length, marketplaceMembersExpired: expiredMembers, deliveryRemindersSent });
 });
 
 
@@ -1753,6 +1822,11 @@ route('POST', '/api/platform/contact', { hostScope: 'platform' }, async (req, re
 });
 
 route('GET', '/api/platform/contact', { hostScope: 'platform', auth: true, roles: ['superadmin'] }, async (req, res) => {
+  if (AUTH_DRIVER === 'supabase') {
+    const { data: rows, error } = await supabaseAdmin().from('platform_messages').select('*').order('created_at', { ascending: false });
+    if (error) return send(res, 500, { error: error.message });
+    return send(res, 200, { messages: (rows || []).map(r => ({ id: r.id, name: r.name, email: r.email, message: r.message, createdAt: r.created_at, status: r.status || 'open' })) });
+  }
   send(res, 200, { messages: [...db.platformMessages].sort((a, b) => b.createdAt - a.createdAt) });
 });
 
@@ -1850,6 +1924,17 @@ route('POST', '/api/platform/tenants', { hostScope: 'platform' }, async (req, re
 });
 
 route('PATCH', '/api/platform/tenants/:id', { hostScope: 'platform', auth: true, roles: ['superadmin'] }, async (req, res, params, body) => {
+  if (AUTH_DRIVER === 'supabase') {
+    if (!body.status || !['active', 'suspended'].includes(body.status)) {
+      const { data: row } = await supabaseAdmin().from('tenants').select('*').eq('id', params.id).maybeSingle();
+      if (!row) return send(res, 404, { error: apiT('tenantNotFound', reqLang(req)) });
+      return send(res, 200, { tenant: rowToTenant(row) });
+    }
+    const { data: row, error } = await supabaseAdmin().from('tenants').update({ status: body.status }).eq('id', params.id).select().maybeSingle();
+    if (error) return send(res, 400, { error: error.message });
+    if (!row) return send(res, 404, { error: apiT('tenantNotFound', reqLang(req)) });
+    return send(res, 200, { tenant: rowToTenant(row) });
+  }
   const tenant = db.tenants.find(t => t.id === params.id);
   if (!tenant) return send(res, 404, { error: apiT('tenantNotFound', reqLang(req)) });
   if (body.status && ['active', 'suspended'].includes(body.status)) tenant.status = body.status;
@@ -2348,7 +2433,7 @@ route('POST', '/api/admin/store/renew', { hostScope: 'tenant', auth: true, roles
       const { error: subErr } = await client.from('subscriptions').insert({ tenant_id: tenant.id, plan_id: planId, expiry_date: newExpiry, payment_status: 'paid' });
       if (subErr) return send(res, 400, { error: subErr.message });
     }
-    const { error: notifErr } = await client.from('notifications').insert({
+    const { error: notifErr } = await supabaseAdmin().from('notifications').insert({
       tenant_id: tenant.id, type: 'renewed', to_email: user.email,
       subject: `Your Hadam subscription for "${tenant.name}" has been renewed`,
       body: `Hi ${user.name},\n\nYour store "${tenant.name}" has been renewed as: ${body.plan}. Your new expiry date is ${newExpiry}.\n\nThank you for staying with Hadam Marketplace.\n\n— Hadam Marketplace`,
@@ -2500,9 +2585,52 @@ function getTenantPaymentMethod(tenantId, method) {
   return db.tenantPaymentMethods.find(m => m.tenantId === tenantId && m.method === method);
 }
 
+async function getTenantPaymentMethodSupabase(tenantId, method) {
+  const { data, error } = await supabaseAdmin().from('tenant_payment_methods').select('*').eq('tenant_id', tenantId).eq('method', method).maybeSingle();
+  if (error) { console.error('[getTenantPaymentMethodSupabase] lookup failed:', error.message); return null; }
+  if (!data) return null;
+  return {
+    id: data.id, tenantId: data.tenant_id, method: data.method, enabled: data.enabled, config: data.config || {},
+    stripeAccountId: data.stripe_account_id, stripeOnboardingStatus: data.stripe_onboarding_status,
+    paypalMerchantId: data.paypal_merchant_id, paypalOnboardingStatus: data.paypal_onboarding_status,
+  };
+}
+
+/** Creates or updates a tenant's payment-method row directly in Supabase (upsert-by-tenant+method). `patch` uses snake_case Supabase column names, matching the shape read by getTenantPaymentMethodSupabase. Used by every admin connect/status/enable route and by the Stripe/PayPal webhook handlers, so that onboarding state lives in the same place the checkout routes actually read it from. */
+async function upsertTenantPaymentMethodSupabase(tenantId, method, patch) {
+  const { data: existing, error: selErr } = await supabaseAdmin().from('tenant_payment_methods').select('*').eq('tenant_id', tenantId).eq('method', method).maybeSingle();
+  if (selErr) throw new Error(selErr.message);
+  if (existing) {
+    const { data, error } = await supabaseAdmin().from('tenant_payment_methods').update(patch).eq('id', existing.id).select().maybeSingle();
+    if (error) throw new Error(error.message);
+    return data;
+  }
+  const { data, error } = await supabaseAdmin().from('tenant_payment_methods').insert({ tenant_id: tenantId, method, ...patch }).select().maybeSingle();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 /** Starts (or resumes) Stripe onboarding for this store: creates a connected account if one doesn't exist yet, then returns a fresh onboarding link. Admin-only — enabling a payment method is a business decision, matching the RLS policy already built for this table. */
 route('POST', '/api/admin/stripe/connect', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
   try {
+    if (AUTH_DRIVER === 'supabase') {
+      let record = await getTenantPaymentMethodSupabase(tenant.id, 'stripe');
+      if (!record) {
+        record = await upsertTenantPaymentMethodSupabase(tenant.id, 'stripe', { enabled: false, stripe_account_id: null, stripe_onboarding_status: 'not_connected' });
+        record = { id: record.id, tenantId: record.tenant_id, method: record.method, enabled: record.enabled, stripeAccountId: record.stripe_account_id, stripeOnboardingStatus: record.stripe_onboarding_status };
+      }
+      if (!record.stripeAccountId) {
+        record.stripeAccountId = await stripeConnectLib.createConnectedAccount({ stripe: stripeClient(), tenantId: tenant.id });
+        record.stripeOnboardingStatus = 'pending';
+        await upsertTenantPaymentMethodSupabase(tenant.id, 'stripe', { stripe_account_id: record.stripeAccountId, stripe_onboarding_status: 'pending' });
+      }
+      const baseUrl = `https://${tenant.subdomain}.${BASE_DOMAIN}`;
+      const url = await stripeConnectLib.createOnboardingLink({
+        stripe: stripeClient(), stripeAccountId: record.stripeAccountId,
+        returnUrl: `${baseUrl}/?stripeOnboarding=return`, refreshUrl: `${baseUrl}/?stripeOnboarding=refresh`,
+      });
+      return send(res, 200, { onboardingUrl: url, stripeAccountId: record.stripeAccountId });
+    }
     let record = getTenantPaymentMethod(tenant.id, 'stripe');
     if (!record) {
       record = { id: newId('tpm'), tenantId: tenant.id, method: 'stripe', enabled: false, stripeAccountId: null, stripeOnboardingStatus: 'not_connected' };
@@ -2527,7 +2655,7 @@ route('POST', '/api/admin/stripe/connect', { hostScope: 'tenant', auth: true, ro
 
 /** Returns this store's current Stripe Connect status, straight from what's stored — the actual truth is only ever updated by the account.updated webhook below, never by this GET request itself. */
 route('GET', '/api/admin/stripe/status', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
-  const record = getTenantPaymentMethod(tenant.id, 'stripe');
+  const record = AUTH_DRIVER === 'supabase' ? await getTenantPaymentMethodSupabase(tenant.id, 'stripe') : getTenantPaymentMethod(tenant.id, 'stripe');
   send(res, 200, {
     enabled: record ? record.enabled : false,
     stripeAccountId: record ? record.stripeAccountId : null,
@@ -2537,17 +2665,42 @@ route('GET', '/api/admin/stripe/status', { hostScope: 'tenant', auth: true, role
 
 /** Public, customer-facing: is Stripe an available checkout option for this store? Deliberately exposes nothing beyond a single boolean — no account ID, no onboarding status — matching how the product catalog itself is already public. */
 route('GET', '/api/payment-methods', { hostScope: 'tenant' }, async (req, res, params, body, query, user, tenant) => {
+  if (AUTH_DRIVER === 'supabase') {
+    const stripeRecord = await getTenantPaymentMethodSupabase(tenant.id, 'stripe');
+    const paypalRecord = await getTenantPaymentMethodSupabase(tenant.id, 'paypal');
+    const cashRecord = await getTenantPaymentMethodSupabase(tenant.id, 'cash');
+    const bankRecord = await getTenantPaymentMethodSupabase(tenant.id, 'bank_transfer');
+    return send(res, 200, {
+      stripeEnabled: !!(stripeRecord && stripeRecord.enabled && stripeRecord.stripeOnboardingStatus === 'connected'), publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null,
+      paypalEnabled: !!(paypalRecord && paypalRecord.enabled && paypalRecord.paypalOnboardingStatus === 'connected'), paypalClientId: process.env.PAYPAL_CLIENT_ID || null,
+      cashEnabled: !!(cashRecord && cashRecord.enabled),
+      bankTransferEnabled: !!(bankRecord && bankRecord.enabled),
+    });
+  }
   const stripeRecord = getTenantPaymentMethod(tenant.id, 'stripe');
   const paypalRecord = getTenantPaymentMethod(tenant.id, 'paypal');
+  const cashRecord = getTenantPaymentMethod(tenant.id, 'cash');
+  const bankRecord = getTenantPaymentMethod(tenant.id, 'bank_transfer');
   send(res, 200, {
     stripeEnabled: !!(stripeRecord && stripeRecord.enabled && stripeRecord.stripeOnboardingStatus === 'connected'), publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null,
     paypalEnabled: !!(paypalRecord && paypalRecord.enabled && paypalRecord.paypalOnboardingStatus === 'connected'), paypalClientId: process.env.PAYPAL_CLIENT_ID || null,
+    cashEnabled: !!(cashRecord && cashRecord.enabled),
+    bankTransferEnabled: !!(bankRecord && bankRecord.enabled),
   });
 });
-
 /** Starts PayPal Partner Referrals onboarding for this store — mirrors POST /api/admin/stripe/connect exactly. Admin-only. */
 route('POST', '/api/admin/paypal/connect', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
   try {
+    if (AUTH_DRIVER === 'supabase') {
+      let record = await getTenantPaymentMethodSupabase(tenant.id, 'paypal');
+      if (!record) {
+        await upsertTenantPaymentMethodSupabase(tenant.id, 'paypal', { enabled: false, paypal_merchant_id: null, paypal_onboarding_status: 'not_connected' });
+      }
+      const baseUrl = `https://${tenant.subdomain}.${BASE_DOMAIN}`;
+      const actionUrl = await paypalConnectLib.createPartnerReferral({ paypalApiCall, tenantId: tenant.id, trackingId: tenant.id, returnUrl: `${baseUrl}/?paypalOnboarding=return` });
+      await upsertTenantPaymentMethodSupabase(tenant.id, 'paypal', { paypal_onboarding_status: 'pending' });
+      return send(res, 200, { onboardingUrl: actionUrl });
+    }
     let record = getTenantPaymentMethod(tenant.id, 'paypal');
     if (!record) {
       record = { id: newId('tpm'), tenantId: tenant.id, method: 'paypal', enabled: false, paypalMerchantId: null, paypalOnboardingStatus: 'not_connected' };
@@ -2566,7 +2719,7 @@ route('POST', '/api/admin/paypal/connect', { hostScope: 'tenant', auth: true, ro
 
 /** Returns this store's current PayPal Connect status — mirrors GET /api/admin/stripe/status exactly. */
 route('GET', '/api/admin/paypal/status', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
-  const record = getTenantPaymentMethod(tenant.id, 'paypal');
+  const record = AUTH_DRIVER === 'supabase' ? await getTenantPaymentMethodSupabase(tenant.id, 'paypal') : getTenantPaymentMethod(tenant.id, 'paypal');
   send(res, 200, {
     enabled: record ? record.enabled : false,
     paypalMerchantId: record ? record.paypalMerchantId : null,
@@ -2576,6 +2729,12 @@ route('GET', '/api/admin/paypal/status', { hostScope: 'tenant', auth: true, role
 
 /** Lets a store admin turn PayPal on/off — only once onboarding has genuinely completed. Mirrors PATCH /api/admin/stripe/enable exactly. */
 route('PATCH', '/api/admin/paypal/enable', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
+  if (AUTH_DRIVER === 'supabase') {
+    const record = await getTenantPaymentMethodSupabase(tenant.id, 'paypal');
+    if (!record || record.paypalOnboardingStatus !== 'connected') return send(res, 400, { error: 'PayPal onboarding must be completed before it can be enabled.' });
+    const updated = await upsertTenantPaymentMethodSupabase(tenant.id, 'paypal', { enabled: !!body.enabled });
+    return send(res, 200, { enabled: updated.enabled });
+  }
   const record = getTenantPaymentMethod(tenant.id, 'paypal');
   if (!record || record.paypalOnboardingStatus !== 'connected') return send(res, 400, { error: 'PayPal onboarding must be completed before it can be enabled.' });
   record.enabled = !!body.enabled;
@@ -2585,11 +2744,61 @@ route('PATCH', '/api/admin/paypal/enable', { hostScope: 'tenant', auth: true, ro
 
 /** Lets a store admin turn Stripe on/off as an accepted payment method — only once onboarding has actually completed (status: 'connected'), never before, regardless of what the client claims. */
 route('PATCH', '/api/admin/stripe/enable', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
+  if (AUTH_DRIVER === 'supabase') {
+    const record = await getTenantPaymentMethodSupabase(tenant.id, 'stripe');
+    if (!record || record.stripeOnboardingStatus !== 'connected') return send(res, 400, { error: 'Stripe onboarding must be completed before it can be enabled.' });
+    const updated = await upsertTenantPaymentMethodSupabase(tenant.id, 'stripe', { enabled: !!body.enabled });
+    return send(res, 200, { enabled: updated.enabled });
+  }
   const record = getTenantPaymentMethod(tenant.id, 'stripe');
   if (!record || record.stripeOnboardingStatus !== 'connected') return send(res, 400, { error: 'Stripe onboarding must be completed before it can be enabled.' });
   record.enabled = !!body.enabled;
   await persist();
   send(res, 200, { enabled: record.enabled });
+});
+
+/** Lets a store admin turn cash-on-delivery on/off. Unlike Stripe/PayPal there's no external onboarding step — no connected account, no onboarding status to check — so this simply creates the row (first time) or flips its enabled flag. Previously this route didn't exist at all under either driver, meaning cash could never actually be turned on for a store despite /api/orders/cash already checking for it. */
+route('PATCH', '/api/admin/cash/enable', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
+  if (AUTH_DRIVER === 'supabase') {
+    const updated = await upsertTenantPaymentMethodSupabase(tenant.id, 'cash', { enabled: !!body.enabled });
+    return send(res, 200, { enabled: updated.enabled });
+  }
+  let record = getTenantPaymentMethod(tenant.id, 'cash');
+  if (!record) {
+    record = { id: newId('tpm'), tenantId: tenant.id, method: 'cash', enabled: false };
+    db.tenantPaymentMethods.push(record);
+  }
+  record.enabled = !!body.enabled;
+  await persist();
+  send(res, 200, { enabled: record.enabled });
+});
+
+/** Returns this store's current cash-on-delivery enabled state. Mirrors GET /api/admin/stripe/status in spirit, minus the onboarding-status fields that don't apply here. */
+route('GET', '/api/admin/cash/status', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
+  const record = AUTH_DRIVER === 'supabase' ? await getTenantPaymentMethodSupabase(tenant.id, 'cash') : getTenantPaymentMethod(tenant.id, 'cash');
+  send(res, 200, { enabled: record ? record.enabled : false });
+});
+
+/** Lets a store admin turn bank transfer on/off. Same reasoning as cash above — no onboarding, previously no route existed to ever enable it. */
+route('PATCH', '/api/admin/bank-transfer/enable', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
+  if (AUTH_DRIVER === 'supabase') {
+    const updated = await upsertTenantPaymentMethodSupabase(tenant.id, 'bank_transfer', { enabled: !!body.enabled });
+    return send(res, 200, { enabled: updated.enabled });
+  }
+  let record = getTenantPaymentMethod(tenant.id, 'bank_transfer');
+  if (!record) {
+    record = { id: newId('tpm'), tenantId: tenant.id, method: 'bank_transfer', enabled: false };
+    db.tenantPaymentMethods.push(record);
+  }
+  record.enabled = !!body.enabled;
+  await persist();
+  send(res, 200, { enabled: record.enabled });
+});
+
+/** Returns this store's current bank-transfer enabled state. */
+route('GET', '/api/admin/bank-transfer/status', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
+  const record = AUTH_DRIVER === 'supabase' ? await getTenantPaymentMethodSupabase(tenant.id, 'bank_transfer') : getTenantPaymentMethod(tenant.id, 'bank_transfer');
+  send(res, 200, { enabled: record ? record.enabled : false });
 });
 
 /**
@@ -2610,17 +2819,130 @@ route('PATCH', '/api/admin/stripe/enable', { hostScope: 'tenant', auth: true, ro
 route('POST', '/api/orders/stripe', { hostScope: 'tenant', auth: true, roles: ['client', 'admin', 'employee'] }, async (req, res, params, body, query, user, tenant) => {
   if (tenant.closedBySelf) return send(res, 403, { error: apiT('storeClosedNoOrders', reqLang(req)) });
   if (tenant.subscriptionExpiresAt && tenant.subscriptionExpiresAt < Date.now()) return send(res, 403, { error: apiT('storeSubExpiredNoOrders', reqLang(req)) });
+   if (AUTH_DRIVER === 'supabase') {
 
-  const record = getTenantPaymentMethod(tenant.id, 'stripe');
+    const record = await getTenantPaymentMethodSupabase(tenant.id, 'stripe');
   if (!record || !record.enabled || record.stripeOnboardingStatus !== 'connected') {
     return send(res, 400, { error: 'Stripe is not available for this store.' });
   }
 
-  const { items, shippingAddress, deliveryMethod } = body;
-  if (!Array.isArray(items) || items.length === 0) return send(res, 400, { error: apiT('cartEmpty', reqLang(req)) });
+  const { items, shippingAddress } = body;
+  if (!Array.isArray(items) || items.length === 0) {
+    return send(res, 400, { error: apiT('cartEmpty', reqLang(req)) });
+  }
+
+  const client = supabaseForRequest(bearerToken(req));
+
+  const productIds = [...new Set(items.map(l => l.productId))];
+  const { data: productRows, error: productsErr } = await client.from('products').select('*, categories(*)').eq('tenant_id', tenant.id).in('id', productIds);
+  if (productsErr) return send(res, 500, { error: productsErr.message });
 
   const resolved = [];
   for (const line of items) {
+    const row = (productRows || []).find(r => r.id === line.productId);
+    if (!row) {
+      return send(res, 400, { error: `Unknown product: ${line.productId}` });
+    }
+    const product = rowToProduct(row);
+    const category = product.category;
+    const qty = line.qty || 1;
+    if (!['shipping', 'manual'].includes(category.fulfillment)) {
+      return send(res, 400, { error: `"${product.name}" cannot currently be purchased with Stripe (download/booking items are not yet supported through Stripe checkout).` });
+    }
+    if (category.fulfillment === 'shipping' && typeof product.stock === 'number' && qty > product.stock) {
+      return send(res, 400, { error: `Only ${product.stock} unit(s) of "${product.name}" left in stock.` });
+    }
+    resolved.push({ product, category, qty });
+  }
+  const needsShipping = resolved.some(r => r.category.fulfillment === 'shipping');
+  if (needsShipping && (!shippingAddress || !shippingAddress.trim())) {
+    return send(res, 400, { error: apiT('shippingAddressRequired', reqLang(req)) });
+  }
+  const total = resolved.reduce((s, r) => s + r.product.price * r.qty, 0);
+
+  const { data: orderRow, error: orderErr } = await client.from('orders').insert({
+    tenant_id: tenant.id, client_id: user.id, payment_status: 'pending', status: 'pending',
+    payment_method: 'stripe', shipping_address: needsShipping ? shippingAddress : null, total,
+  }).select().maybeSingle();
+  if (orderErr) return send(res, 400, { error: orderErr.message });
+  if (!orderRow) return send(res, 500, { error: apiT('orderCreationFailed', reqLang(req)) });
+
+  const itemRows = resolved.map(r => ({
+    order_id: orderRow.id, tenant_id: tenant.id, product_id: r.product.id, name: r.product.name, sku: r.product.sku || null,
+    translations: r.product.translations || {}, price: r.product.price, qty: r.qty,
+    category_name: r.category.name, fulfillment: r.category.fulfillment, status: 'awaiting_payment',
+  }));
+  const { error: itemsErr } = await client.from('order_items').insert(itemRows);
+  if (itemsErr) {
+    await client.from('orders').delete().eq('id', orderRow.id);
+    return send(res, 400, { error: itemsErr.message });
+  }
+  await client.from('order_status_history').insert({ tenant_id: tenant.id, order_id: orderRow.id, status: 'pending', changed_by: 'System' });
+
+  let intent;
+  try {
+    intent = await stripeConnectLib.createPaymentIntent({ stripe: stripeClient(), stripeAccountId: record.stripeAccountId, amount: total, currency: 'usd' });
+  } catch (e) {
+    console.error('[stripe checkout] failed to create PaymentIntent:', e.message);
+    await client.from('order_items').delete().eq('order_id', orderRow.id);
+    await client.from('orders').delete().eq('id', orderRow.id);
+    return send(res, 500, { error: 'Could not start Stripe payment. Please try again.' });
+  }
+
+  let anchorPersisted = false;
+  let anchorErr = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const anchorResult = await supabaseAdmin().from('orders').update({ pending_provider_reference: intent.id }).eq('id', orderRow.id).select().maybeSingle();
+    if (!anchorResult.error && anchorResult.data) { anchorPersisted = true; break; }
+    anchorErr = anchorResult.error;
+    if (attempt < 3) await new Promise(r => setTimeout(r, attempt === 1 ? 200 : 500));
+  }
+
+  if (!anchorPersisted) {
+    try { await stripeClient().paymentIntents.cancel(intent.id); }
+    catch (e) { console.error(`[stripe checkout] FATAL: could not persist recovery anchor AND could not cancel PaymentIntent ${intent.id} as containment. This PaymentIntent is now genuinely orphaned and needs manual attention.`, e.message); }
+    await client.from('order_items').delete().eq('order_id', orderRow.id);
+    await client.from('orders').delete().eq('id', orderRow.id);
+    console.error(`[stripe checkout] ALERT: recovery anchor could not be persisted for order ${orderRow.id}; PaymentIntent ${intent.id} was cancelled as containment.`, anchorErr && anchorErr.message);
+    return send(res, 500, { error: 'Could not start Stripe payment. Please try again.' });
+  }
+
+  let payment = null;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      payment = await createPaymentRecord({ supabaseAdminClient: supabaseAdmin(), tenantId: tenant.id, orderId: orderRow.id, clientId: user.id, method: 'stripe', status: 'pending', amount: total, currency: 'usd', providerReference: intent.id });
+      lastErr = null;
+      break;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 3) await new Promise(r => setTimeout(r, attempt === 1 ? 200 : 500));
+    }
+  }
+
+  if (payment && payment.providerReference === intent.id) {
+    await supabaseAdmin().from('orders').update({ pending_provider_reference: null }).eq('id', orderRow.id);
+  } else {
+    console.error(`[stripe checkout] ALERT: payments row could not be created after 3 attempts for order ${orderRow.id}, Stripe PaymentIntent ${intent.id}. Recovery anchor is in place; webhook reconciliation must recover this.`, lastErr && lastErr.message);
+  }
+
+  try {
+    await stripeClient().paymentIntents.update(intent.id, { metadata: { paymentId: payment ? payment.id : '', orderId: orderRow.id } });
+  } catch (e) {
+    console.error('[stripe checkout] failed to attach metadata to PaymentIntent (non-fatal):', e.message);
+  }
+
+    return send(res, 201, { orderId: orderRow.id, clientSecret: intent.client_secret, publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null });
+  }
+
+  const record2 = getTenantPaymentMethod(tenant.id, 'stripe');
+  if (!record2 || !record2.enabled || record2.stripeOnboardingStatus !== 'connected') {
+    return send(res, 400, { error: 'Stripe is not available for this store.' });
+  }
+  const { items: localItems, shippingAddress: localShippingAddress } = body;
+  if (!Array.isArray(localItems) || localItems.length === 0) return send(res, 400, { error: apiT('cartEmpty', reqLang(req)) });
+  const localResolved = [];
+  for (const line of localItems) {
     const p = findProduct(line.productId, tenant.id);
     if (!p) return send(res, 400, { error: `Unknown product: ${line.productId}` });
     const qty = line.qty || 1;
@@ -2631,41 +2953,36 @@ route('POST', '/api/orders/stripe', { hostScope: 'tenant', auth: true, roles: ['
     if (category.fulfillment === 'shipping' && typeof p.stock === 'number' && qty > p.stock) {
       return send(res, 400, { error: `Only ${p.stock} unit(s) of "${p.name}" left in stock.` });
     }
-    resolved.push({ product: p, category, qty });
+    localResolved.push({ product: p, category, qty });
   }
-  const needsShipping = resolved.some(r => r.category.fulfillment === 'shipping');
-  if (needsShipping && (!shippingAddress || !shippingAddress.trim())) {
+  const localNeedsShipping = localResolved.some(r => r.category.fulfillment === 'shipping');
+  if (localNeedsShipping && (!localShippingAddress || !localShippingAddress.trim())) {
     return send(res, 400, { error: apiT('shippingAddressRequired', reqLang(req)) });
   }
-  const total = resolved.reduce((s, r) => s + r.product.price * r.qty, 0);
-  const now = Date.now();
-  const orderId = newId('ord');
-  const orderItems = resolved.map(r => ({
+  const localTotal = localResolved.reduce((s, r) => s + r.product.price * r.qty, 0);
+  const localNow = Date.now();
+  const localOrderId = newId('ord');
+  const localOrderItems = localResolved.map(r => ({
     productId: r.product.id, name: r.product.name, sku: r.product.sku || null, translations: r.product.translations || {}, price: r.product.price, qty: r.qty,
     categoryId: r.category.id, categoryName: r.category.name, fulfillment: r.category.fulfillment,
-    status: 'awaiting_payment', // distinct from the simulated flow's statuses — nothing has been fulfilled or stocked yet, since payment isn't confirmed
+    status: 'awaiting_payment',
     refundRequested: false, refundStatus: 'none', refundRequestReason: null, refundRequestedAt: null, refundDecisionBy: null, refundDecisionAt: null, refundDecisionReason: null, refundPaymentLast4: null,
   }));
-  const order = { id: orderId, tenantId: tenant.id, clientId: user.id, clientName: user.name, clientEmail: user.email, items: orderItems, total, paymentStatus: 'pending', status: 'pending', shippingAddress: needsShipping ? shippingAddress : null, createdAt: now };
-  db.orders.push(order);
-  db.orderStatusHistory.push({ id: newId('osh'), tenantId: tenant.id, orderId, status: 'pending', changedBy: 'System', changedAt: now });
-
-  let payment;
+  const localOrder = { id: localOrderId, tenantId: tenant.id, clientId: user.id, clientName: user.name, clientEmail: user.email, items: localOrderItems, total: localTotal, paymentStatus: 'pending', status: 'pending', shippingAddress: localNeedsShipping ? localShippingAddress : null, createdAt: localNow };
+  db.orders.push(localOrder);
+  db.orderStatusHistory.push({ id: newId('osh'), tenantId: tenant.id, orderId: localOrderId, status: 'pending', changedBy: 'System', changedAt: localNow });
   try {
-    payment = await createPaymentRecord({ db, supabaseAdminClient: null, tenantId: tenant.id, orderId, clientId: user.id, method: 'stripe', status: 'pending', amount: total, currency: 'usd' });
-    const intent = await stripeConnectLib.createPaymentIntent({ stripe: stripeClient(), stripeAccountId: record.stripeAccountId, amount: total, currency: 'usd' });
-    // metadata.paymentId is how the webhook finds its way back to this
-    // exact payment record when Stripe later confirms (or fails) it.
-    await stripeClient().paymentIntents.update(intent.id, { metadata: { paymentId: payment.id } });
-    payment.providerReference = intent.id;
+    const localPayment = await createPaymentRecord({ db, supabaseAdminClient: null, tenantId: tenant.id, orderId: localOrderId, clientId: user.id, method: 'stripe', status: 'pending', amount: localTotal, currency: 'usd' });
+    const localIntent = await stripeConnectLib.createPaymentIntent({ stripe: stripeClient(), stripeAccountId: record2.stripeAccountId, amount: localTotal, currency: 'usd' });
+    await stripeClient().paymentIntents.update(localIntent.id, { metadata: { paymentId: localPayment.id } });
+    localPayment.providerReference = localIntent.id;
     await persist();
-    send(res, 201, { orderId, clientSecret: intent.client_secret, publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null });
+    send(res, 201, { orderId: localOrderId, clientSecret: localIntent.client_secret, publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null });
   } catch (e) {
     console.error('[stripe checkout] failed to create PaymentIntent:', e.message);
     send(res, 500, { error: 'Could not start Stripe payment. Please try again.' });
   }
 });
-
 /**
  * PayPal checkout — Create step. Mirrors the Stripe checkout route's
  * validation and order/payment creation exactly (same fulfillment-type
@@ -2678,16 +2995,138 @@ route('POST', '/api/orders/paypal', { hostScope: 'tenant', auth: true, roles: ['
   if (tenant.closedBySelf) return send(res, 403, { error: apiT('storeClosedNoOrders', reqLang(req)) });
   if (tenant.subscriptionExpiresAt && tenant.subscriptionExpiresAt < Date.now()) return send(res, 403, { error: apiT('storeSubExpiredNoOrders', reqLang(req)) });
 
+  if (AUTH_DRIVER === 'supabase') {
+    const record = await getTenantPaymentMethodSupabase(tenant.id, 'paypal');
+    if (!record || !record.enabled || record.paypalOnboardingStatus !== 'connected') {
+      return send(res, 400, { error: 'PayPal is not available for this store.' });
+    }
+
+    const { items, shippingAddress } = body;
+    if (!Array.isArray(items) || items.length === 0) return send(res, 400, { error: apiT('cartEmpty', reqLang(req)) });
+
+    const client = supabaseForRequest(bearerToken(req));
+    const productIds = [...new Set(items.map(l => l.productId))];
+    const { data: productRows, error: productsErr } = await client.from('products').select('*, categories(*)').eq('tenant_id', tenant.id).in('id', productIds);
+    if (productsErr) return send(res, 500, { error: productsErr.message });
+
+    const resolved = [];
+    for (const line of items) {
+      const row = (productRows || []).find(r => r.id === line.productId);
+      if (!row) return send(res, 400, { error: `Unknown product: ${line.productId}` });
+      const product = rowToProduct(row);
+      const category = product.category;
+      const qty = line.qty || 1;
+      if (!['shipping', 'manual'].includes(category.fulfillment)) {
+        return send(res, 400, { error: `"${product.name}" cannot currently be purchased with PayPal (download/booking items are not yet supported through PayPal checkout).` });
+      }
+      if (category.fulfillment === 'shipping' && typeof product.stock === 'number' && qty > product.stock) {
+        return send(res, 400, { error: `Only ${product.stock} unit(s) of "${product.name}" left in stock.` });
+      }
+      resolved.push({ product, category, qty });
+    }
+    const needsShipping = resolved.some(r => r.category.fulfillment === 'shipping');
+    if (needsShipping && (!shippingAddress || !shippingAddress.trim())) {
+      return send(res, 400, { error: apiT('shippingAddressRequired', reqLang(req)) });
+    }
+    const total = resolved.reduce((s, r) => s + r.product.price * r.qty, 0);
+
+    const { data: orderRow, error: orderErr } = await client.from('orders').insert({
+      tenant_id: tenant.id, client_id: user.id, payment_status: 'pending', status: 'pending',
+      payment_method: 'paypal', shipping_address: needsShipping ? shippingAddress : null, total,
+    }).select().maybeSingle();
+    if (orderErr) return send(res, 400, { error: orderErr.message });
+    if (!orderRow) return send(res, 500, { error: apiT('orderCreationFailed', reqLang(req)) });
+
+    const itemRows = resolved.map(r => ({
+      order_id: orderRow.id, tenant_id: tenant.id, product_id: r.product.id, name: r.product.name, sku: r.product.sku || null,
+      translations: r.product.translations || {}, price: r.product.price, qty: r.qty,
+      category_name: r.category.name, fulfillment: r.category.fulfillment, status: 'awaiting_payment',
+    }));
+    const { error: itemsErr } = await client.from('order_items').insert(itemRows);
+    if (itemsErr) {
+      await client.from('orders').delete().eq('id', orderRow.id);
+      return send(res, 400, { error: itemsErr.message });
+    }
+    await client.from('order_status_history').insert({ tenant_id: tenant.id, order_id: orderRow.id, status: 'pending', changed_by: 'System' });
+
+    let payment = null;
+    let lastErr = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        payment = await createPaymentRecord({ supabaseAdminClient: supabaseAdmin(), tenantId: tenant.id, orderId: orderRow.id, clientId: user.id, method: 'paypal', status: 'pending', amount: total, currency: 'usd' });
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        if (attempt < 3) await new Promise(r => setTimeout(r, attempt === 1 ? 200 : 500));
+      }
+    }
+    if (!payment) {
+      console.error(`[paypal checkout] ALERT: could not create payments row for order ${orderRow.id} even before contacting PayPal.`, lastErr && lastErr.message);
+      await client.from('order_items').delete().eq('order_id', orderRow.id);
+      await client.from('orders').delete().eq('id', orderRow.id);
+      return send(res, 500, { error: 'Could not start PayPal payment. Please try again.' });
+    }
+
+    let paypalOrder;
+    try {
+            const origin = req.headers['x-forwarded-proto'] + '://' + req.headers.host;
+      paypalOrder = await paypalConnectLib.createOrder({ paypalApiCall, sellerMerchantId: record.paypalMerchantId, amount: total, currency: 'USD', customId:  
+      payment.id, returnUrl: origin + '/?paypalReturn=1&orderId=' + orderRow.id, cancelUrl: origin + '/?paypalCancel=1&orderId=' + orderRow.id });
+    } catch (e) {
+      console.error('[paypal checkout] failed to create Order:', e.message);
+      await supabaseAdmin().from('payments').delete().eq('id', payment.id);
+      await client.from('order_items').delete().eq('order_id', orderRow.id);
+      await client.from('orders').delete().eq('id', orderRow.id);
+      return send(res, 500, { error: 'Could not start PayPal payment. Please try again.' });
+    }
+
+    let anchorPersisted = false;
+    let anchorErr = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const anchorResult = await supabaseAdmin().from('orders').update({ pending_provider_reference: paypalOrder.id }).eq('id', orderRow.id).select().maybeSingle();
+      if (!anchorResult.error && anchorResult.data) { anchorPersisted = true; break; }
+      anchorErr = anchorResult.error;
+      if (attempt < 3) await new Promise(r => setTimeout(r, attempt === 1 ? 200 : 500));
+    }
+
+    if (!anchorPersisted) {
+      try { await paypalApiCall('POST', `/v2/checkout/orders/${paypalOrder.id}/void`, {}); }
+      catch (e) { console.error(`[paypal checkout] FATAL: could not persist recovery anchor AND could not void PayPal order ${paypalOrder.id} as containment. This order is now genuinely orphaned and needs manual attention.`, e.message); }
+      await supabaseAdmin().from('payments').delete().eq('id', payment.id);
+      await client.from('order_items').delete().eq('order_id', orderRow.id);
+      await client.from('orders').delete().eq('id', orderRow.id);
+      console.error(`[paypal checkout] ALERT: recovery anchor could not be persisted for order ${orderRow.id}; PayPal order ${paypalOrder.id} void attempted as containment.`, anchorErr && anchorErr.message);
+      return send(res, 500, { error: 'Could not start PayPal payment. Please try again.' });
+    }
+
+    let refFilled = false;
+    let refErr = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const refResult = await supabaseAdmin().from('payments').update({ provider_reference: paypalOrder.id }).eq('id', payment.id).select().maybeSingle();
+      if (!refResult.error && refResult.data) { refFilled = true; break; }
+      refErr = refResult.error;
+      if (attempt < 3) await new Promise(r => setTimeout(r, attempt === 1 ? 200 : 500));
+    }
+
+    if (refFilled) {
+      await supabaseAdmin().from('orders').update({ pending_provider_reference: null }).eq('id', orderRow.id);
+    } else {
+      console.error(`[paypal checkout] ALERT: payments.provider_reference could not be filled in after 3 attempts for order ${orderRow.id}, PayPal order ${paypalOrder.id}. Recovery anchor is in place; webhook reconciliation must recover this.`, refErr && refErr.message);
+    }
+
+  const approveLink = (paypalOrder.links || []).find(l => l.rel === 'approve' || l.rel === 'payer-action');
+  return send(res, 201, { orderId: orderRow.id, paypalOrderId: paypalOrder.id, paypalClientId: process.env.PAYPAL_CLIENT_ID || null, approveUrl:    
+  approveLink ? approveLink.href : null });  }
+
   const record = getTenantPaymentMethod(tenant.id, 'paypal');
   if (!record || !record.enabled || record.paypalOnboardingStatus !== 'connected') {
     return send(res, 400, { error: 'PayPal is not available for this store.' });
   }
-
-  const { items, shippingAddress } = body;
-  if (!Array.isArray(items) || items.length === 0) return send(res, 400, { error: apiT('cartEmpty', reqLang(req)) });
-
-  const resolved = [];
-  for (const line of items) {
+  const { items: localItems, shippingAddress: localShippingAddress } = body;
+  if (!Array.isArray(localItems) || localItems.length === 0) return send(res, 400, { error: apiT('cartEmpty', reqLang(req)) });
+  const localResolved = [];
+  for (const line of localItems) {
     const p = findProduct(line.productId, tenant.id);
     if (!p) return send(res, 400, { error: `Unknown product: ${line.productId}` });
     const qty = line.qty || 1;
@@ -2698,48 +3137,323 @@ route('POST', '/api/orders/paypal', { hostScope: 'tenant', auth: true, roles: ['
     if (category.fulfillment === 'shipping' && typeof p.stock === 'number' && qty > p.stock) {
       return send(res, 400, { error: `Only ${p.stock} unit(s) of "${p.name}" left in stock.` });
     }
-    resolved.push({ product: p, category, qty });
+    localResolved.push({ product: p, category, qty });
   }
-  const needsShipping = resolved.some(r => r.category.fulfillment === 'shipping');
-  if (needsShipping && (!shippingAddress || !shippingAddress.trim())) {
+  const localNeedsShipping = localResolved.some(r => r.category.fulfillment === 'shipping');
+  if (localNeedsShipping && (!localShippingAddress || !localShippingAddress.trim())) {
     return send(res, 400, { error: apiT('shippingAddressRequired', reqLang(req)) });
   }
-  const total = resolved.reduce((s, r) => s + r.product.price * r.qty, 0);
-  const now = Date.now();
-  const orderId = newId('ord');
-  const orderItems = resolved.map(r => ({
+  const localTotal = localResolved.reduce((s, r) => s + r.product.price * r.qty, 0);
+  const localNow = Date.now();
+  const localOrderId = newId('ord');
+  const localOrderItems = localResolved.map(r => ({
     productId: r.product.id, name: r.product.name, sku: r.product.sku || null, translations: r.product.translations || {}, price: r.product.price, qty: r.qty,
     categoryId: r.category.id, categoryName: r.category.name, fulfillment: r.category.fulfillment,
     status: 'awaiting_payment',
     refundRequested: false, refundStatus: 'none', refundRequestReason: null, refundRequestedAt: null, refundDecisionBy: null, refundDecisionAt: null, refundDecisionReason: null, refundPaymentLast4: null,
   }));
-  const order = { id: orderId, tenantId: tenant.id, clientId: user.id, clientName: user.name, clientEmail: user.email, items: orderItems, total, paymentStatus: 'pending', status: 'pending', shippingAddress: needsShipping ? shippingAddress : null, createdAt: now };
-  db.orders.push(order);
-  db.orderStatusHistory.push({ id: newId('osh'), tenantId: tenant.id, orderId, status: 'pending', changedBy: 'System', changedAt: now });
-
+  const localOrder = { id: localOrderId, tenantId: tenant.id, clientId: user.id, clientName: user.name, clientEmail: user.email, items: localOrderItems, total: localTotal, paymentStatus: 'pending', status: 'pending', shippingAddress: localNeedsShipping ? localShippingAddress : null, createdAt: localNow };
+  db.orders.push(localOrder);
+  db.orderStatusHistory.push({ id: newId('osh'), tenantId: tenant.id, orderId: localOrderId, status: 'pending', changedBy: 'System', changedAt: localNow });
   try {
-    const payment = await createPaymentRecord({ db, supabaseAdminClient: null, tenantId: tenant.id, orderId, clientId: user.id, method: 'paypal', status: 'pending', amount: total, currency: 'usd' });
-    const paypalOrder = await paypalConnectLib.createOrder({ paypalApiCall, sellerMerchantId: record.paypalMerchantId, amount: total, currency: 'USD', customId: payment.id });
-    payment.providerReference = paypalOrder.id;
+    const localPayment = await createPaymentRecord({ db, supabaseAdminClient: null, tenantId: tenant.id, orderId: localOrderId, clientId: user.id, method: 'paypal', status: 'pending', amount: localTotal, currency: 'usd' });
+    const paypalOrder = await paypalConnectLib.createOrder({ paypalApiCall, sellerMerchantId: record.paypalMerchantId, amount: localTotal, currency: 'USD', customId: localPayment.id });
+    localPayment.providerReference = paypalOrder.id;
     await persist();
-    send(res, 201, { orderId, paypalOrderId: paypalOrder.id, paypalClientId: process.env.PAYPAL_CLIENT_ID || null });
+    send(res, 201, { orderId: localOrderId, paypalOrderId: paypalOrder.id, paypalClientId: process.env.PAYPAL_CLIENT_ID || null });
   } catch (e) {
     console.error('[paypal checkout] failed to create Order:', e.message);
     send(res, 500, { error: 'Could not start PayPal payment. Please try again.' });
   }
 });
+/**
+ * Cash checkout — no external provider, no redirect. The order and its
+ * payment row are created immediately in a 'pending' state; the payment
+ * only becomes 'paid' once staff explicitly confirms cash was actually
+ * received (see POST /api/admin/payments/:paymentId/confirm-cash below),
+ * exactly matching the same "never trust anything but a verified
+ * confirmation" principle already enforced for Stripe/PayPal — here the
+ * confirmation authority is staff judgement instead of a webhook.
+ */
+route('POST', '/api/orders/cash', { hostScope: 'tenant', auth: true, roles: ['client', 'admin', 'employee'] }, async (req, res, params, body, query, user, tenant) => {
+  if (tenant.closedBySelf) return send(res, 403, { error: apiT('storeClosedNoOrders', reqLang(req)) });
+  if (tenant.subscriptionExpiresAt && tenant.subscriptionExpiresAt < Date.now()) return send(res, 403, { error: apiT('storeSubExpiredNoOrders', reqLang(req)) });
+
+  if (AUTH_DRIVER === 'supabase') {
+    const cashRecord = await getTenantPaymentMethodSupabase(tenant.id, 'cash');
+    if (!cashRecord || !cashRecord.enabled) {
+      return send(res, 400, { error: 'Cash payment is not available for this store.' });
+    }
+
+    const { items, shippingAddress } = body;
+    if (!Array.isArray(items) || items.length === 0) return send(res, 400, { error: apiT('cartEmpty', reqLang(req)) });
+
+    const client = supabaseForRequest(bearerToken(req));
+    const productIds = [...new Set(items.map(l => l.productId))];
+    const { data: productRows, error: productsErr } = await client.from('products').select('*, categories(*)').eq('tenant_id', tenant.id).in('id', productIds);
+    if (productsErr) return send(res, 500, { error: productsErr.message });
+
+    const resolved = [];
+    for (const line of items) {
+      const row = (productRows || []).find(r => r.id === line.productId);
+      if (!row) return send(res, 400, { error: `Unknown product: ${line.productId}` });
+      const product = rowToProduct(row);
+      const category = product.category;
+      const qty = line.qty || 1;
+      if (category.fulfillment === 'shipping' && typeof product.stock === 'number' && qty > product.stock) {
+        return send(res, 400, { error: `Only ${product.stock} unit(s) of "${product.name}" left in stock.` });
+      }
+      resolved.push({ product, category, qty });
+    }
+    const needsShipping = resolved.some(r => r.category.fulfillment === 'shipping');
+    if (needsShipping && (!shippingAddress || !shippingAddress.trim())) {
+      return send(res, 400, { error: apiT('shippingAddressRequired', reqLang(req)) });
+    }
+    const total = resolved.reduce((s, r) => s + r.product.price * r.qty, 0);
+
+    const { data: orderRow, error: orderErr } = await client.from('orders').insert({
+      tenant_id: tenant.id, client_id: user.id, payment_status: 'pending', status: 'pending',
+      payment_method: 'cash', shipping_address: needsShipping ? shippingAddress : null, total,
+    }).select().maybeSingle();
+    if (orderErr) return send(res, 400, { error: orderErr.message });
+    if (!orderRow) return send(res, 500, { error: apiT('orderCreationFailed', reqLang(req)) });
+
+    const itemRows = resolved.map(r => ({
+      order_id: orderRow.id, tenant_id: tenant.id, product_id: r.product.id, name: r.product.name, sku: r.product.sku || null,
+      translations: r.product.translations || {}, price: r.product.price, qty: r.qty,
+      category_name: r.category.name, fulfillment: r.category.fulfillment, status: 'awaiting_payment',
+    }));
+    const { error: itemsErr } = await client.from('order_items').insert(itemRows);
+    if (itemsErr) {
+      await client.from('orders').delete().eq('id', orderRow.id);
+      return send(res, 400, { error: itemsErr.message });
+    }
+    await client.from('order_status_history').insert({ tenant_id: tenant.id, order_id: orderRow.id, status: 'pending', changed_by: 'System' });
+
+    let payment = null;
+    let lastErr = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        payment = await createPaymentRecord({ supabaseAdminClient: supabaseAdmin(), tenantId: tenant.id, orderId: orderRow.id, clientId: user.id, method: 'cash', status: 'pending', amount: total, currency: 'usd' });
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        if (attempt < 3) await new Promise(r => setTimeout(r, attempt === 1 ? 200 : 500));
+      }
+    }
+    if (!payment) {
+      console.error(`[cash checkout] ALERT: could not create payments row for order ${orderRow.id}.`, lastErr && lastErr.message);
+      await client.from('order_items').delete().eq('order_id', orderRow.id);
+      await client.from('orders').delete().eq('id', orderRow.id);
+      return send(res, 500, { error: 'Could not start cash order. Please try again.' });
+    }
+
+    return send(res, 201, { orderId: orderRow.id, paymentId: payment.id, message: apiT('cashOrderPlacedMsg', reqLang(req)) || 'Order placed — pay with cash when you receive/collect it.' });
+  }
+
+  const record = getTenantPaymentMethod(tenant.id, 'cash');
+  if (!record || !record.enabled) {
+    return send(res, 400, { error: 'Cash payment is not available for this store.' });
+  }
+  const { items: localItems, shippingAddress: localShippingAddress } = body;
+  if (!Array.isArray(localItems) || localItems.length === 0) return send(res, 400, { error: apiT('cartEmpty', reqLang(req)) });
+  const localResolved = [];
+  for (const line of localItems) {
+    const p = findProduct(line.productId, tenant.id);
+    if (!p) return send(res, 400, { error: `Unknown product: ${line.productId}` });
+    const qty = line.qty || 1;
+    const category = findCategory(p.categoryId, tenant.id);
+    if (category.fulfillment === 'shipping' && typeof p.stock === 'number' && qty > p.stock) {
+      return send(res, 400, { error: `Only ${p.stock} unit(s) of "${p.name}" left in stock.` });
+    }
+    localResolved.push({ product: p, category, qty });
+  }
+  const localNeedsShipping = localResolved.some(r => r.category.fulfillment === 'shipping');
+  if (localNeedsShipping && (!localShippingAddress || !localShippingAddress.trim())) {
+    return send(res, 400, { error: apiT('shippingAddressRequired', reqLang(req)) });
+  }
+  const localTotal = localResolved.reduce((s, r) => s + r.product.price * r.qty, 0);
+  const localNow = Date.now();
+  const localOrderId = newId('ord');
+  const localOrderItems = localResolved.map(r => ({
+    productId: r.product.id, name: r.product.name, sku: r.product.sku || null, translations: r.product.translations || {}, price: r.product.price, qty: r.qty,
+    categoryId: r.category.id, categoryName: r.category.name, fulfillment: r.category.fulfillment,
+    status: 'awaiting_payment',
+    refundRequested: false, refundStatus: 'none', refundRequestReason: null, refundRequestedAt: null, refundDecisionBy: null, refundDecisionAt: null, refundDecisionReason: null, refundPaymentLast4: null,
+  }));
+  const localOrder = { id: localOrderId, tenantId: tenant.id, clientId: user.id, clientName: user.name, clientEmail: user.email, items: localOrderItems, total: localTotal, paymentStatus: 'pending', status: 'pending', shippingAddress: localNeedsShipping ? localShippingAddress : null, createdAt: localNow };
+  db.orders.push(localOrder);
+  db.orderStatusHistory.push({ id: newId('osh'), tenantId: tenant.id, orderId: localOrderId, status: 'pending', changedBy: 'System', changedAt: localNow });
+  const localPayment = await createPaymentRecord({ db, supabaseAdminClient: null, tenantId: tenant.id, orderId: localOrderId, clientId: user.id, method: 'cash', status: 'pending', amount: localTotal, currency: 'usd' });
+  await persist();
+  send(res, 201, { orderId: localOrderId, paymentId: localPayment.id, message: apiT('cashOrderPlacedMsg', reqLang(req)) || 'Order placed — pay with cash when you receive/collect it.' });
+});
 
 /**
- * PayPal checkout — server-side Capture step, called by the browser only
- * AFTER the customer has approved on PayPal's own UI. This is the step
- * that actually moves money — matching the exact same "never trust the
- * browser alone" principle already enforced for Stripe, this endpoint's
- * own success response is still NOT what marks the order paid; the
- * payments/orders records are only updated once the corresponding
- * webhook (PAYMENT.CAPTURE.COMPLETED) is independently verified and
- * processed, exactly like Stripe's payment_intent.succeeded.
+ * Bank transfer checkout — like cash, no external provider or webhook.
+ * Unlike cash, the customer's money moves outside Hadam entirely (a real
+ * bank transfer), so staff need a way to match an incoming statement
+ * line back to the correct order — hence the generated reference number,
+ * enforced unique per (tenant, method) by the same idx_payments_provider_reference
+ * index already proven for Stripe/PayPal. Settlement itself reuses the
+ * exact same atomic-claim + consequence logic as cash.
  */
+function generateBankTransferReference() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I — avoids transcription errors when a customer reads this aloud or copies it into a bank app
+  let code = '';
+  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return `BT-${code}`;
+}
+route('POST', '/api/orders/bank-transfer', { hostScope: 'tenant', auth: true, roles: ['client', 'admin', 'employee'] }, async (req, res, params, body, query, user, tenant) => {
+  if (tenant.closedBySelf) return send(res, 403, { error: apiT('storeClosedNoOrders', reqLang(req)) });
+  if (tenant.subscriptionExpiresAt && tenant.subscriptionExpiresAt < Date.now()) return send(res, 403, { error: apiT('storeSubExpiredNoOrders', reqLang(req)) });
+
+  if (AUTH_DRIVER === 'supabase') {
+    const bankRecord = await getTenantPaymentMethodSupabase(tenant.id, 'bank_transfer');
+    if (!bankRecord || !bankRecord.enabled) {
+      return send(res, 400, { error: 'Bank transfer is not available for this store.' });
+    }
+
+    const { items, shippingAddress } = body;
+    if (!Array.isArray(items) || items.length === 0) return send(res, 400, { error: apiT('cartEmpty', reqLang(req)) });
+
+    const client = supabaseForRequest(bearerToken(req));
+    const productIds = [...new Set(items.map(l => l.productId))];
+    const { data: productRows, error: productsErr } = await client.from('products').select('*, categories(*)').eq('tenant_id', tenant.id).in('id', productIds);
+    if (productsErr) return send(res, 500, { error: productsErr.message });
+
+    const resolved = [];
+    for (const line of items) {
+      const row = (productRows || []).find(r => r.id === line.productId);
+      if (!row) return send(res, 400, { error: `Unknown product: ${line.productId}` });
+      const product = rowToProduct(row);
+      const category = product.category;
+      const qty = line.qty || 1;
+      if (category.fulfillment === 'shipping' && typeof product.stock === 'number' && qty > product.stock) {
+        return send(res, 400, { error: `Only ${product.stock} unit(s) of "${product.name}" left in stock.` });
+      }
+      resolved.push({ product, category, qty });
+    }
+    const needsShipping = resolved.some(r => r.category.fulfillment === 'shipping');
+    if (needsShipping && (!shippingAddress || !shippingAddress.trim())) {
+      return send(res, 400, { error: apiT('shippingAddressRequired', reqLang(req)) });
+    }
+    const total = resolved.reduce((s, r) => s + r.product.price * r.qty, 0);
+
+    const { data: orderRow, error: orderErr } = await client.from('orders').insert({
+      tenant_id: tenant.id, client_id: user.id, payment_status: 'pending', status: 'pending',
+      payment_method: 'bank_transfer', shipping_address: needsShipping ? shippingAddress : null, total,
+    }).select().maybeSingle();
+    if (orderErr) return send(res, 400, { error: orderErr.message });
+    if (!orderRow) return send(res, 500, { error: apiT('orderCreationFailed', reqLang(req)) });
+
+    const itemRows = resolved.map(r => ({
+      order_id: orderRow.id, tenant_id: tenant.id, product_id: r.product.id, name: r.product.name, sku: r.product.sku || null,
+      translations: r.product.translations || {}, price: r.product.price, qty: r.qty,
+      category_name: r.category.name, fulfillment: r.category.fulfillment, status: 'awaiting_payment',
+    }));
+    const { error: itemsErr } = await client.from('order_items').insert(itemRows);
+    if (itemsErr) {
+      await client.from('orders').delete().eq('id', orderRow.id);
+      return send(res, 400, { error: itemsErr.message });
+    }
+    await client.from('order_status_history').insert({ tenant_id: tenant.id, order_id: orderRow.id, status: 'pending', changed_by: 'System' });
+
+    // Reference generation retries on the rare unique-constraint collision
+    // (idx_payments_provider_reference), same pattern as any other bounded,
+    // idempotency-safe retry used elsewhere tonight.
+    let payment = null;
+    let lastErr = null;
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      const reference = generateBankTransferReference();
+      try {
+        payment = await createPaymentRecord({ supabaseAdminClient: supabaseAdmin(), tenantId: tenant.id, orderId: orderRow.id, clientId: user.id, method: 'bank_transfer', status: 'pending', amount: total, currency: 'usd', providerReference: reference });
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        const isUniqueConflict = e.code === '23505' || /duplicate|unique/i.test(e.message || '');
+        if (!isUniqueConflict) break; // only retry on a genuine reference collision, not other failures
+      }
+    }
+    if (!payment) {
+      console.error(`[bank transfer checkout] ALERT: could not create payments row for order ${orderRow.id}.`, lastErr && lastErr.message);
+      await client.from('order_items').delete().eq('order_id', orderRow.id);
+      await client.from('orders').delete().eq('id', orderRow.id);
+      return send(res, 500, { error: 'Could not start bank transfer order. Please try again.' });
+    }
+
+    return send(res, 201, {
+      orderId: orderRow.id, paymentId: payment.id, reference: payment.providerReference,
+      amount: total, currency: 'usd',
+      bankDetails: bankRecord.config || {},
+      message: apiT('bankTransferOrderPlacedMsg', reqLang(req)) || 'Order placed — complete your bank transfer using the reference below.',
+    });
+  }
+
+  const record = getTenantPaymentMethod(tenant.id, 'bank_transfer');
+  if (!record || !record.enabled) {
+    return send(res, 400, { error: 'Bank transfer is not available for this store.' });
+  }
+  const { items: localItems, shippingAddress: localShippingAddress } = body;
+  if (!Array.isArray(localItems) || localItems.length === 0) return send(res, 400, { error: apiT('cartEmpty', reqLang(req)) });
+  const localResolved = [];
+  for (const line of localItems) {
+    const p = findProduct(line.productId, tenant.id);
+    if (!p) return send(res, 400, { error: `Unknown product: ${line.productId}` });
+    const qty = line.qty || 1;
+    const category = findCategory(p.categoryId, tenant.id);
+    if (category.fulfillment === 'shipping' && typeof p.stock === 'number' && qty > p.stock) {
+      return send(res, 400, { error: `Only ${p.stock} unit(s) of "${p.name}" left in stock.` });
+    }
+    localResolved.push({ product: p, category, qty });
+  }
+  const localNeedsShipping = localResolved.some(r => r.category.fulfillment === 'shipping');
+  if (localNeedsShipping && (!localShippingAddress || !localShippingAddress.trim())) {
+    return send(res, 400, { error: apiT('shippingAddressRequired', reqLang(req)) });
+  }
+  const localTotal = localResolved.reduce((s, r) => s + r.product.price * r.qty, 0);
+  const localNow = Date.now();
+  const localOrderId = newId('ord');
+  const localOrderItems = localResolved.map(r => ({
+    productId: r.product.id, name: r.product.name, sku: r.product.sku || null, translations: r.product.translations || {}, price: r.product.price, qty: r.qty,
+    categoryId: r.category.id, categoryName: r.category.name, fulfillment: r.category.fulfillment,
+    status: 'awaiting_payment',
+    refundRequested: false, refundStatus: 'none', refundRequestReason: null, refundRequestedAt: null, refundDecisionBy: null, refundDecisionAt: null, refundDecisionReason: null, refundPaymentLast4: null,
+  }));
+  const localOrder = { id: localOrderId, tenantId: tenant.id, clientId: user.id, clientName: user.name, clientEmail: user.email, items: localOrderItems, total: localTotal, paymentStatus: 'pending', status: 'pending', shippingAddress: localNeedsShipping ? localShippingAddress : null, createdAt: localNow };
+  db.orders.push(localOrder);
+  db.orderStatusHistory.push({ id: newId('osh'), tenantId: tenant.id, orderId: localOrderId, status: 'pending', changedBy: 'System', changedAt: localNow });
+  const localReference = generateBankTransferReference();
+  const localPayment = await createPaymentRecord({ db, supabaseAdminClient: null, tenantId: tenant.id, orderId: localOrderId, clientId: user.id, method: 'bank_transfer', status: 'pending', amount: localTotal, currency: 'usd', providerReference: localReference });
+  await persist();
+  send(res, 201, {
+    orderId: localOrderId, paymentId: localPayment.id, reference: localReference,
+    amount: localTotal, currency: 'usd',
+    bankDetails: (record && record.config) || {},
+    message: apiT('bankTransferOrderPlacedMsg', reqLang(req)) || 'Order placed — complete your bank transfer using the reference below.',
+  });
+});
+
 route('POST', '/api/orders/paypal/:orderId/capture', { hostScope: 'tenant', auth: true, roles: ['client', 'admin', 'employee'] }, async (req, res, params, body, query, user, tenant) => {
+  if (AUTH_DRIVER === 'supabase') {
+    const client = supabaseForRequest(bearerToken(req));
+    const { data: order, error: orderErr } = await client.from('orders').select('*').eq('id', params.orderId).eq('tenant_id', tenant.id).maybeSingle();
+    if (orderErr) return send(res, 500, { error: orderErr.message });
+    if (!order) return send(res, 404, { error: 'Order not found.' });
+    const { data: payment, error: paymentErr } = await supabaseAdmin().from('payments').select('*').eq('order_id', order.id).eq('method', 'paypal').maybeSingle();
+    if (paymentErr) return send(res, 500, { error: paymentErr.message });
+    if (!payment) return send(res, 404, { error: 'No PayPal payment found for this order.' });
+    try {
+      const result = await paypalConnectLib.captureOrder({ paypalApiCall, paypalOrderId: payment.provider_reference });
+      return send(res, 200, { status: result.status });
+    } catch (e) {
+      console.error('[paypal checkout] failed to capture Order:', e.message);
+      return send(res, 500, { error: 'Could not confirm PayPal payment. Please try again.' });
+    }
+  }
+
   const order = db.orders.find(o => o.id === params.orderId && o.tenantId === tenant.id);
   if (!order) return send(res, 404, { error: 'Order not found.' });
   const payment = db.payments.find(p => p.orderId === order.id && p.method === 'paypal');
@@ -2752,7 +3466,124 @@ route('POST', '/api/orders/paypal/:orderId/capture', { hostScope: 'tenant', auth
     send(res, 500, { error: 'Could not confirm PayPal payment. Please try again.' });
   }
 });
+/**
+ * Staff confirmation of a cash payment — the cash equivalent of a
+ * verified webhook. There is no external provider here, so the
+ * confirmation authority is explicitly staff judgement (admin/employee
+ * only, never the client themselves) rather than an automated signal.
+ * Reuses the exact same atomic claim + settlement consequence logic
+ * already proven for Stripe/PayPal, so stock decrement, order/item
+ * settlement, and notification all behave identically regardless of
+ * payment method.
+ */
+route('POST', '/api/admin/payments/:paymentId/confirm-cash', { hostScope: 'tenant', auth: true, roles: ['admin', 'employee'] }, async (req, res, params, body, query, user, tenant) => {
+  if (AUTH_DRIVER === 'supabase') {
+    const { data, error } = await supabaseAdmin().from('payments').select('*').eq('id', params.paymentId).maybeSingle();
+    if (error) return send(res, 500, { error: error.message });
+    const payment = data ? rowToPayment(data) : null;
+    if (!payment) return send(res, 404, { error: 'Payment not found.' });
+    if (payment.tenantId !== tenant.id) return send(res, 404, { error: 'Payment not found.' });
+    if (payment.method !== 'cash') return send(res, 400, { error: 'This endpoint only confirms cash payments.' });
+    if (payment.status !== 'pending') {
+      return send(res, 400, { error: `This payment cannot be confirmed from its current status (${payment.status}).` });
+    }
+    const claimed = await tryClaimPaymentTransition({ paymentId: payment.id, fromStatus: 'pending', toStatus: 'paid', confirmedBy: user.id });
+    if (!claimed) return send(res, 409, { error: 'This payment was already confirmed or its status changed.' });
+    await applyPaymentOutcomeToOrderSupabase(claimed, true);
+    return send(res, 200, { status: 'paid', message: 'Cash payment confirmed.' });
+  }
 
+  const payment = db.payments.find(p => p.id === params.paymentId);
+  if (!payment) return send(res, 404, { error: 'Payment not found.' });
+  if (payment.tenantId !== tenant.id) return send(res, 404, { error: 'Payment not found.' });
+  if (payment.method !== 'cash') return send(res, 400, { error: 'This endpoint only confirms cash payments.' });
+  if (payment.status !== 'pending') {
+    return send(res, 400, { error: `This payment cannot be confirmed from its current status (${payment.status}).` });
+  }
+  payment.status = 'paid';
+  payment.confirmedBy = user.id;
+  await applyPaymentOutcomeToOrder(payment, true);
+  await persist();
+  send(res, 200, { status: 'paid', message: 'Cash payment confirmed.' });
+});
+/**
+ * Staff confirmation of a bank transfer — same reasoning and pattern as
+ * cash confirmation: no external provider, so a human matches an
+ * incoming bank statement line to the reference number, then confirms
+ * here. Reuses the exact same atomic claim + settlement consequence
+ * logic.
+ */
+route('POST', '/api/admin/payments/:paymentId/confirm-bank-transfer', { hostScope: 'tenant', auth: true, roles: ['admin', 'employee'] }, async (req, res, params, body, query, user, tenant) => {
+  if (AUTH_DRIVER === 'supabase') {
+    const { data, error } = await supabaseAdmin().from('payments').select('*').eq('id', params.paymentId).maybeSingle();
+    if (error) return send(res, 500, { error: error.message });
+    const payment = data ? rowToPayment(data) : null;
+    if (!payment) return send(res, 404, { error: 'Payment not found.' });
+    if (payment.tenantId !== tenant.id) return send(res, 404, { error: 'Payment not found.' });
+    if (payment.method !== 'bank_transfer') return send(res, 400, { error: 'This endpoint only confirms bank transfer payments.' });
+    if (payment.status !== 'pending') {
+      return send(res, 400, { error: `This payment cannot be confirmed from its current status (${payment.status}).` });
+    }
+    const claimed = await tryClaimPaymentTransition({ paymentId: payment.id, fromStatus: 'pending', toStatus: 'paid', confirmedBy: user.id });
+    if (!claimed) return send(res, 409, { error: 'This payment was already confirmed or its status changed.' });
+    await applyPaymentOutcomeToOrderSupabase(claimed, true);
+    return send(res, 200, { status: 'paid', message: 'Bank transfer confirmed.' });
+  }
+
+  const payment = db.payments.find(p => p.id === params.paymentId);
+  if (!payment) return send(res, 404, { error: 'Payment not found.' });
+  if (payment.tenantId !== tenant.id) return send(res, 404, { error: 'Payment not found.' });
+  if (payment.method !== 'bank_transfer') return send(res, 400, { error: 'This endpoint only confirms bank transfer payments.' });
+  if (payment.status !== 'pending') {
+    return send(res, 400, { error: `This payment cannot be confirmed from its current status (${payment.status}).` });
+  }
+  payment.status = 'paid';
+  payment.confirmedBy = user.id;
+  await applyPaymentOutcomeToOrder(payment, true);
+  await persist();
+  send(res, 200, { status: 'paid', message: 'Bank transfer confirmed.' });
+});
+/**
+ * Cancellation of a still-pending bank transfer (or cash order) — the
+ * customer changed their mind, or staff never received the transfer.
+ * Since the payment never reached 'paid', no stock was ever decremented
+ * (settlement is what causes the decrement, and settlement only runs on
+ * a successful claim to 'paid') — so cancellation here is a pure status
+ * change, never a stock reversal.
+ */
+route('POST', '/api/admin/payments/:paymentId/cancel-pending', { hostScope: 'tenant', auth: true, roles: ['admin', 'employee'] }, async (req, res, params, body, query, user, tenant) => {
+  if (AUTH_DRIVER === 'supabase') {
+    const { data, error } = await supabaseAdmin().from('payments').select('*').eq('id', params.paymentId).maybeSingle();
+    if (error) return send(res, 500, { error: error.message });
+    const payment = data ? rowToPayment(data) : null;
+    if (!payment) return send(res, 404, { error: 'Payment not found.' });
+    if (payment.tenantId !== tenant.id) return send(res, 404, { error: 'Payment not found.' });
+    if (!['cash', 'bank_transfer'].includes(payment.method)) return send(res, 400, { error: 'This endpoint only cancels cash or bank transfer payments.' });
+    if (payment.status !== 'pending') {
+      return send(res, 400, { error: `This payment cannot be cancelled from its current status (${payment.status}).` });
+    }
+    const claimed = await tryClaimPaymentTransition({ paymentId: payment.id, fromStatus: 'pending', toStatus: 'cancelled', confirmedBy: user.id });
+    if (!claimed) return send(res, 409, { error: 'This payment was already confirmed or its status changed.' });
+    const supaAdmin = supabaseAdmin();
+    await supaAdmin.from('orders').update({ payment_status: 'failed' }).eq('id', payment.orderId);
+    await supaAdmin.from('order_items').update({ status: 'payment_failed' }).eq('order_id', payment.orderId).eq('status', 'awaiting_payment');
+    return send(res, 200, { status: 'cancelled', message: 'Payment cancelled.' });
+  }
+
+  const payment = db.payments.find(p => p.id === params.paymentId);
+  if (!payment) return send(res, 404, { error: 'Payment not found.' });
+  if (payment.tenantId !== tenant.id) return send(res, 404, { error: 'Payment not found.' });
+  if (!['cash', 'bank_transfer'].includes(payment.method)) return send(res, 400, { error: 'This endpoint only cancels cash or bank transfer payments.' });
+  if (payment.status !== 'pending') {
+    return send(res, 400, { error: `This payment cannot be cancelled from its current status (${payment.status}).` });
+  }
+  payment.status = 'cancelled';
+  payment.confirmedBy = user.id;
+  const order = db.orders.find(o => o.id === payment.orderId);
+  if (order) { order.paymentStatus = 'failed'; order.items.forEach(i => { if (i.status === 'awaiting_payment') i.status = 'payment_failed'; }); }
+  await persist();
+  send(res, 200, { status: 'cancelled', message: 'Payment cancelled.' });
+});
 /**
  * Provider-dispatching refund endpoint — staff never needs to know or
  * care which provider a payment used; this route figures that out from
@@ -2769,7 +3600,14 @@ route('POST', '/api/orders/paypal/:orderId/capture', { hostScope: 'tenant', auth
  * exactly the same principle already enforced for "payment succeeded."
  */
 route('POST', '/api/admin/payments/:paymentId/refund', { hostScope: 'tenant', auth: true, roles: ['admin', 'employee'] }, async (req, res, params, body, query, user, tenant) => {
-  const payment = db.payments.find(p => p.id === params.paymentId);
+    let payment;
+  if (AUTH_DRIVER === 'supabase') {
+    const { data, error } = await supabaseAdmin().from('payments').select('*').eq('id', params.paymentId).maybeSingle();
+    if (error) return send(res, 500, { error: error.message });
+    payment = data ? rowToPayment(data) : null;
+  } else {
+    payment = db.payments.find(p => p.id === params.paymentId);
+  }
   if (!payment) return send(res, 404, { error: 'Payment not found.' });
   // Tenant ownership check — a real security boundary, not a formality:
   // this is what stops Store A's staff from refunding Store B's payment
@@ -2812,6 +3650,121 @@ route('POST', '/api/admin/payments/:paymentId/refund', { hostScope: 'tenant', au
 
 /** The Stripe Connect webhook endpoint. Platform-level (hostScope: 'any') since Stripe calls one fixed URL regardless of which connected account an event is for — event.account in the verified payload, never anything host- or client-supplied, is what identifies the tenant. rawBody: true is essential here — see readRawBody's own comment for why. */
 /** Applies the real-world consequences of a payment's outcome to its order: fulfillment status, stock decrement (only on success, only for shipping items), and the payment_received notification. Shared by every provider's webhook handler (Stripe, PayPal, and any future method) so this logic — the actual "did the money really arrive" business rules — is defined exactly once. */
+async function tryClaimPaymentTransition({ paymentId, fromStatus, toStatus, confirmedBy = null }) {
+  const admin = supabaseAdmin();
+  const updateFields = { status: toStatus, updated_at: new Date().toISOString() };
+  if (confirmedBy) updateFields.confirmed_by = confirmedBy;
+  const { data, error } = await admin.from('payments').update(updateFields)
+    .eq('id', paymentId).eq('status', fromStatus).select().maybeSingle();
+  if (error) { console.error(`[webhook] failed to claim payment transition ${fromStatus} -> ${toStatus} for payment ${paymentId}:`, error.message); return null; }
+  return data ? rowToPayment(data) : null;
+}
+
+async function applyPaymentOutcomeToOrderSupabase(payment, succeeded) {
+  if (!payment) return;
+  const admin = supabaseAdmin();
+
+  const { data: order, error: orderFetchErr } = await admin.from('orders').select('*, order_items(*)').eq('id', payment.orderId).maybeSingle();
+  if (orderFetchErr) { console.error('[webhook] failed to fetch order for outcome application:', orderFetchErr.message); return; }
+  if (!order) { console.error(`[webhook] order ${payment.orderId} not found while applying payment outcome — nothing to update.`); return; }
+
+  const { error: orderUpdateErr } = await admin.from('orders').update({ payment_status: succeeded ? 'success' : 'failed' }).eq('id', order.id);
+  if (orderUpdateErr) console.error('[webhook] failed to update order.payment_status:', orderUpdateErr.message);
+
+  for (const item of order.order_items || []) {
+    if (item.status !== 'awaiting_payment') continue;
+
+    if (succeeded && item.fulfillment === 'shipping' && item.product_id) {
+      const { data: newStock, error: stockErr } = await admin.rpc('adjust_product_stock_for_item', {
+        p_order_item_id: item.id, p_product_id: item.product_id, p_tenant_id: order.tenant_id, p_change: -item.qty, p_reason: 'sale', p_order_id: order.id,
+      });
+      if (stockErr) {
+        console.error(`[webhook] ALERT: adjust_product_stock_for_item RPC call failed for order ${order.id}, item ${item.id}:`, stockErr.message);
+        continue;
+      }
+      if (newStock === null) {
+        console.error(`[webhook] ALERT: insufficient stock to fulfill order ${order.id}, item ${item.id} (product ${item.product_id}) — payment succeeded, stock not decremented. Requires manual inventory reconciliation.`);
+      }
+    }
+
+    const newStatus = succeeded
+      ? (item.fulfillment === 'shipping' ? 'pending' : item.fulfillment === 'booking' ? 'requested' : item.fulfillment === 'download' ? 'ready' : 'pending')
+      : 'payment_failed';
+    const { error: itemUpdateErr } = await admin.from('order_items').update({ status: newStatus }).eq('id', item.id);
+    if (itemUpdateErr) console.error(`[webhook] failed to update order_item ${item.id} status:`, itemUpdateErr.message);
+  }
+
+  if (succeeded) {
+    const { data: claimedForNotification, error: notifyClaimErr } = await admin.from('orders').update({ payment_notification_sent_at: new Date().toISOString() }).eq('id', order.id).is('payment_notification_sent_at', null).select().maybeSingle();
+    if (notifyClaimErr) console.error('[webhook] failed to claim notification send for order', order.id, notifyClaimErr.message);
+    if (claimedForNotification) {
+      const itemsList = (order.order_items || []).map(i => `- ${i.name} × ${i.qty} ($${(i.price * i.qty).toFixed(2)})`).join('\n');
+      const orderDate = new Date(order.created_at).toLocaleString();
+      const { data: adminMemberships, error: adminMembershipsErr } = await admin.from('tenant_memberships').select('user_id').eq('tenant_id', order.tenant_id).eq('role', 'admin');
+      if (adminMembershipsErr) console.error('[webhook] admin lookup for payment notice failed:', adminMembershipsErr.message);
+      for (const m of adminMemberships || []) {
+        try {
+          const { data: authUser } = await admin.auth.admin.getUserById(m.user_id);
+          if (authUser && authUser.user) {
+            const adminLang = await getRecipientLang(authUser.user.email);
+            const subject = emailT(EMAIL_I18N, 'paymentReceivedSubject', adminLang)(order.id);
+            const emailBody = emailT(EMAIL_I18N, 'paymentReceivedBody', adminLang)(order.id, order.client_id, Number(order.total).toFixed(2), orderDate, itemsList);
+            await admin.from('notifications').insert({ tenant_id: order.tenant_id, type: 'payment_received', to_email: authUser.user.email, subject, body: emailBody });
+            await sendRealEmail({ to: authUser.user.email, subject, text: emailBody, html: wrapEmailHtml(emailBody, adminLang) });
+          }
+        } catch (e) { console.error('[webhook] admin notification failed (best-effort, non-fatal):', e.message); }
+      }
+    }
+  }
+}
+
+async function reconcilePaymentByProviderReference({ providerReference, method, amount, currency = 'usd' }) {
+  const admin = supabaseAdmin();
+
+  const { data: existingPayment, error: findErr } = await admin.from('payments').select('*').eq('provider_reference', providerReference).eq('method', method).maybeSingle();
+  if (findErr) { console.error('[webhook reconciliation] payments lookup failed:', findErr.message); return null; }
+  if (existingPayment) return rowToPayment(existingPayment);
+
+  const { data: order, error: orderErr } = await admin.from('orders').select('*').eq('pending_provider_reference', providerReference).eq('payment_method', method).maybeSingle();
+  if (orderErr) { console.error('[webhook reconciliation] orders anchor lookup failed:', orderErr.message); return null; }
+    if (!order) {
+    console.error(`[webhook reconciliation] no payment or order found for provider reference ${providerReference} (method: ${method}) — ignoring.`);
+    return null;
+  }
+
+  const { data: existingByOrder, error: byOrderErr } = await admin.from('payments').select('*').eq('order_id', order.id).eq('method', method).maybeSingle();
+  if (byOrderErr) { console.error('[webhook reconciliation] payments lookup by order_id failed:', byOrderErr.message); return null; }
+  if (existingByOrder) {
+    if (!existingByOrder.provider_reference) {
+      const { data: updated, error: updateErr } = await admin.from('payments').update({ provider_reference: providerReference }).eq('id', existingByOrder.id).select().maybeSingle();
+      if (updateErr) { console.error(`[webhook reconciliation] found existing payment ${existingByOrder.id} for order ${order.id} but failed to attach provider_reference:`, updateErr.message); return rowToPayment(existingByOrder); }
+      const { error: clearErr } = await admin.from('orders').update({ pending_provider_reference: null }).eq('id', order.id);
+      if (clearErr) console.error(`[webhook reconciliation] attached provider_reference to payment ${existingByOrder.id}, but clearing the recovery anchor on order ${order.id} failed (harmless):`, clearErr.message);
+      console.error(`[webhook reconciliation] reconciled existing payment ${existingByOrder.id} for order ${order.id} with provider reference ${providerReference}.`);
+      return rowToPayment(updated);
+    }
+    return rowToPayment(existingByOrder);
+  }
+
+  try {
+  
+    const recovered = await createPaymentRecord({ supabaseAdminClient: admin, tenantId: order.tenant_id, orderId: order.id, clientId: order.client_id,  
+    method, status: 'pending', amount: amount != null ? amount : Number(order.total), currency, providerReference });
+    const { error: clearErr } = await admin.from('orders').update({ pending_provider_reference: null }).eq('id', order.id);
+    if (clearErr) console.error(`[webhook reconciliation] payment ${recovered.id} recovered successfully, but clearing the recovery anchor on order  
+    ${order.id} failed (harmless — a future webhook will still find the payment via the normal lookup first):`, clearErr.message);
+    console.error(`[webhook reconciliation] recovered missing payments row for order ${order.id}, provider reference ${providerReference}.`);
+    return recovered;
+  } catch (e) {
+    const isUniqueConflict = e.code === '23505' || /duplicate|unique/i.test(e.message || '');
+    if (isUniqueConflict) {
+      const { data: winner } = await admin.from('payments').select('*').eq('provider_reference', providerReference).eq('method', method).maybeSingle();
+      if (winner) return rowToPayment(winner);
+    }
+    console.error(`[webhook reconciliation] ALERT: failed to reconstruct payments row for order ${order.id}, provider reference ${providerReference} even during reconciliation:`, e.message);
+    return null;
+  }
+}
 async function applyPaymentOutcomeToOrder(payment, succeeded) {
   const order = payment && db.orders.find(o => o.id === payment.orderId);
   if (!order) return;
@@ -2853,29 +3806,50 @@ route('POST', '/api/webhooks/stripe', { hostScope: 'any', rawBody: true }, async
     return send(res, 400, { error: 'Invalid signature.' });
   }
 
-  const result = await stripeConnectLib.processWebhookEvent({ db, supabaseAdminClient: null, event });
-
+  const result = await stripeConnectLib.processWebhookEvent({ db, supabaseAdminClient: AUTH_DRIVER === 'supabase' ? supabaseAdmin() : null, event });
   // account.updated needs the tenant lookup + tenant_payment_methods write
   // that only this route (not lib/stripeConnect.js, which has no `db`
   // access of its own) can perform.
   if (result.processed && event.type === 'account.updated') {
     const account = event.data.object;
-    const record = db.tenantPaymentMethods.find(m => m.stripeAccountId === account.id);
-    if (record) {
-      record.stripeOnboardingStatus = stripeConnectLib.mapAccountStatus(account);
-      await persist();
+    const newStatus = stripeConnectLib.mapAccountStatus(account);
+    if (AUTH_DRIVER === 'supabase') {
+      const { data: record } = await supabaseAdmin().from('tenant_payment_methods').select('*').eq('stripe_account_id', account.id).maybeSingle();
+      if (record) await upsertTenantPaymentMethodSupabase(record.tenant_id, 'stripe', { stripe_onboarding_status: newStatus });
+    } else {
+      const record = db.tenantPaymentMethods.find(m => m.stripeAccountId === account.id);
+      if (record) {
+        record.stripeOnboardingStatus = newStatus;
+        await persist();
+      }
     }
   }
-
-  // payment_intent.succeeded/payment_failed: apply the order-side
-  // consequences that lib/stripeConnect.js correctly has no access to
-  // (stock, notifications, order status) — the payments-table transition
-  // itself already happened inside processWebhookEvent above.
   if (result.processed && (event.type === 'payment_intent.succeeded' || event.type === 'payment_intent.payment_failed')) {
     const intent = event.data.object;
-    const paymentId = intent.metadata && intent.metadata.paymentId;
-    const payment = paymentId && db.payments.find(p => p.id === paymentId);
-    await applyPaymentOutcomeToOrder(payment, event.type === 'payment_intent.succeeded');
+    const succeeded = event.type === 'payment_intent.succeeded';
+    if (AUTH_DRIVER === 'supabase') {
+      const paymentId = intent.metadata && intent.metadata.paymentId;
+      let payment = null;
+      if (paymentId) {
+        const { data } = await supabaseAdmin().from('payments').select('*').eq('id', paymentId).maybeSingle();
+        if (data) payment = rowToPayment(data);
+      }
+      if (!payment) {
+        payment = await reconcilePaymentByProviderReference({ providerReference: intent.id, method: 'stripe', amount: intent.amount / 100, currency: intent.currency });
+      }
+      if (payment) {
+        let claimed = await tryClaimPaymentTransition({ paymentId: payment.id, fromStatus: 'pending', toStatus: succeeded ? 'paid' : 'failed' });
+        if (!claimed) {
+          const { data: current } = await supabaseAdmin().from('payments').select('*').eq('id', payment.id).maybeSingle();
+          if (current && current.status === (succeeded ? 'paid' : 'failed')) claimed = rowToPayment(current);
+        }
+        if (claimed) await applyPaymentOutcomeToOrderSupabase(claimed, succeeded);
+      }
+    } else {
+      const paymentId = intent.metadata && intent.metadata.paymentId;
+      const payment = paymentId && db.payments.find(p => p.id === paymentId);
+      await applyPaymentOutcomeToOrder(payment, succeeded);
+    }
   }
   send(res, 200, { received: true });
 });
@@ -2898,27 +3872,59 @@ route('POST', '/api/webhooks/paypal', { hostScope: 'any' }, async (req, res, par
     return send(res, 400, { error: 'Invalid signature.' });
   }
 
-  const result = await paypalConnectLib.processWebhookEvent({ db, supabaseAdminClient: null, event: body });
+  const result = await paypalConnectLib.processWebhookEvent({ db, supabaseAdminClient: AUTH_DRIVER === 'supabase' ? supabaseAdmin() : null, event: body });
 
   if (result.processed && (body.event_type === 'MERCHANT.ONBOARDING.COMPLETED' || body.event_type === 'MERCHANT.PARTNER-CONSENT.REVOKED')) {
     const merchantId = body.resource && (body.resource.merchant_id || (body.resource.partner_client_id ? body.resource.merchant_id : null));
     if (merchantId) {
-      const record = db.tenantPaymentMethods.find(m => m.paypalMerchantId === merchantId);
-      if (record) {
-        record.paypalOnboardingStatus = body.event_type === 'MERCHANT.ONBOARDING.COMPLETED' ? 'connected' : 'restricted';
-        await persist();
+      const newStatus = body.event_type === 'MERCHANT.ONBOARDING.COMPLETED' ? 'connected' : 'restricted';
+      if (AUTH_DRIVER === 'supabase') {
+        const { data: record } = await supabaseAdmin().from('tenant_payment_methods').select('*').eq('paypal_merchant_id', merchantId).maybeSingle();
+        if (record) await upsertTenantPaymentMethodSupabase(record.tenant_id, 'paypal', { paypal_onboarding_status: newStatus });
+      } else {
+        const record = db.tenantPaymentMethods.find(m => m.paypalMerchantId === merchantId);
+        if (record) {
+          record.paypalOnboardingStatus = newStatus;
+          await persist();
+        }
       }
     }
   }
 
   if (result.processed && (body.event_type === 'PAYMENT.CAPTURE.COMPLETED' || body.event_type === 'PAYMENT.CAPTURE.DENIED')) {
-    const paymentId = body.resource && body.resource.custom_id;
-    const payment = paymentId && db.payments.find(p => p.id === paymentId);
-    await applyPaymentOutcomeToOrder(payment, body.event_type === 'PAYMENT.CAPTURE.COMPLETED');
+    const succeeded = body.event_type === 'PAYMENT.CAPTURE.COMPLETED';
+
+    if (AUTH_DRIVER === 'supabase') {
+      const paymentId = body.resource && body.resource.custom_id;
+      let payment = null;
+      if (paymentId) {
+        const { data } = await supabaseAdmin().from('payments').select('*').eq('id', paymentId).maybeSingle();
+        if (data) payment = rowToPayment(data);
+      }
+      if (!payment) {
+        const paypalOrderId = body.resource && body.resource.supplementary_data && body.resource.supplementary_data.related_ids && body.resource.supplementary_data.related_ids.order_id;
+                const amount = body.resource && body.resource.amount && Number(body.resource.amount.value);
+        const currency = body.resource && body.resource.amount && body.resource.amount.currency_code && body.resource.amount.currency_code.toLowerCase();
+        if (paypalOrderId) {
+          payment = await reconcilePaymentByProviderReference({ providerReference: paypalOrderId, method: 'paypal', amount, currency });
+        }
+      }
+      if (!payment) { send(res, 200, { received: true }); return; }
+
+      let claimed = await tryClaimPaymentTransition({ paymentId: payment.id, fromStatus: 'pending', toStatus: succeeded ? 'paid' : 'failed' });
+      if (!claimed) {
+        const { data: current } = await supabaseAdmin().from('payments').select('*').eq('id', payment.id).maybeSingle();
+        if (current && current.status === (succeeded ? 'paid' : 'failed')) claimed = rowToPayment(current);
+      }
+      if (claimed) await applyPaymentOutcomeToOrderSupabase(claimed, succeeded);
+    } else {
+      const paymentId = body.resource && body.resource.custom_id;
+      const payment = paymentId && db.payments.find(p => p.id === paymentId);
+      await applyPaymentOutcomeToOrder(payment, succeeded);
+    }
   }
   send(res, 200, { received: true });
 });
-
 // Uses MyMemory's free translation API (https://mymemory.translated.net) —
 // no signup or API key required for this level of usage. It has a fair-use
 // daily character cap (higher if a contact email is provided), which is
@@ -4531,14 +5537,33 @@ route('GET', '/api/admin/reports', { hostScope: 'tenant', auth: true, roles: ['a
   });
 });
 
-route('GET', '/api/admin/orders', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
+route('GET', '/api/admin/orders', { hostScope: 'tenant', auth: true, roles: ['admin', 'employee'] }, async (req, res, params, body, query, user, tenant) => {
   if (AUTH_DRIVER === 'supabase') {
     const client = supabaseForRequest(bearerToken(req));
     const { data, error } = await client.from('orders').select('*, order_items(*)').eq('tenant_id', tenant.id).order('created_at', { ascending: false });
     if (error) return send(res, 500, { error: error.message });
-    return send(res, 200, { orders: data.map(orderRowForClient) });
+    const orderIds = data.map(o => o.id);
+    const { data: paymentRows } = orderIds.length ? await supabaseAdmin().from('payments').select('id, order_id, method, status, provider_reference').in('order_id', orderIds) : { data: [] };
+    const paymentsByOrder = new Map((paymentRows || []).map(p => [p.order_id, p]));
+    return send(res, 200, { orders: data.map(row => {
+      const order = orderRowForClient(row);
+      const payment = paymentsByOrder.get(row.id);
+      order.paymentMethod = row.payment_method;
+      order.paymentId = payment ? payment.id : null;
+      order.paymentProviderStatus = payment ? payment.status : null;
+      order.paymentReference = payment ? payment.provider_reference : null;
+      return order;
+    }) });
   }
-  send(res, 200, { orders: db.orders.filter(o => o.tenantId === tenant.id).sort((a, b) => b.createdAt - a.createdAt).map(orderForClient) });
+  send(res, 200, { orders: db.orders.filter(o => o.tenantId === tenant.id).sort((a, b) => b.createdAt - a.createdAt).map(o => {
+    const order = orderForClient(o);
+    const payment = db.payments.find(p => p.orderId === o.id);
+    order.paymentMethod = payment ? payment.method : null;
+    order.paymentId = payment ? payment.id : null;
+    order.paymentProviderStatus = payment ? payment.status : null;
+    order.paymentReference = payment ? payment.providerReference : null;
+    return order;
+  }) });
 });
 
 // Admin-assisted MFA reset — the true last-resort recovery path for someone
@@ -5336,4 +6361,4 @@ if (require.main === module) {
     setInterval(() => { checkDeliveryConfirmationReminders().catch(err => console.error('Delivery reminder check failed:', err)); }, 60 * 60 * 1000);
   })().catch(err => { console.error('Failed to start:', err); process.exit(1); });
 }
-module.exports = { server, initDb, resolveHost, hashPassword, verifyPassword, signToken, verifyToken, refreshItemStatus, DB_PATH, SEED_PATH, getDb: () => db, applyPaymentOutcomeToOrder };
+module.exports = { server, initDb, resolveHost, hashPassword, verifyPassword, signToken, verifyToken, refreshItemStatus, DB_PATH, SEED_PATH, getDb: () => db, applyPaymentOutcomeToOrder, applyPaymentOutcomeToOrderSupabase, reconcilePaymentByProviderReference, tryClaimPaymentTransition };

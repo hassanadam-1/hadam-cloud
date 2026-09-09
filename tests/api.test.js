@@ -3002,8 +3002,7 @@ module.exports = async function runApiTests(port) {
     await test('PayPal: a genuinely-processed PAYMENT.CAPTURE.REFUNDED webhook (partial amount) moves paid -> partially_refunded, and a duplicate delivery does not reprocess', async () => {
       const { dbRef, payment } = await setupStoreWithPaidPayment('refund-paypalwh-' + uniq(), 'paypal');
       const { processWebhookEvent } = require('../lib/paypalConnect');
-      const event = { id: 'WH-REFUND-' + uniq(), event_type: 'PAYMENT.CAPTURE.REFUNDED', resource: { custom_id: payment.id, amount: { value: '25.00' }, seller_payable_breakdown: { net_amount: { value: '10.00' } } } };
-      const first = await processWebhookEvent({ db: dbRef, supabaseAdminClient: null, event });
+      const event = { id: 'WH-REFUND-' + uniq(), event_type: 'PAYMENT.CAPTURE.REFUNDED', resource: { custom_id: payment.id, amount: { value: '10.00' }, seller_payable_breakdown: { net_amount: { value: '10.00' } } } };      const first = await processWebhookEvent({ db: dbRef, supabaseAdminClient: null, event });
       assert.strictEqual(first.processed, true);
       assert.strictEqual(dbRef.payments.find(p => p.id === payment.id).status, 'partially_refunded');
 

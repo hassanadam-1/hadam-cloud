@@ -394,7 +394,9 @@ create table orders (
   status            text not null default 'pending' check (status in ('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded')),
   shipping_address  text,
   total             numeric(10, 2) not null,
-  created_at        timestamptz not null default now()
+  created_at        timestamptz not null default now(),
+  payment_method              text check (payment_method in ('simulated', 'stripe', 'paypal', 'bank_transfer', 'cash')),
+  pending_provider_reference  text
 );
 create index idx_orders_tenant on orders (tenant_id);
 create index idx_orders_client on orders (client_id);
@@ -467,6 +469,7 @@ create index idx_payments_order on payments (order_id);
 -- NULL under a unique index, so this only activates once a real key is
 -- actually provided.
 create unique index idx_payments_idempotency on payments (tenant_id, method, idempotency_key) where idempotency_key is not null;
+create unique index idx_payments_provider_reference on payments (tenant_id, method, provider_reference) where provider_reference is not null;
 alter table payments enable row level security;
 
 -- One row per (tenant, method) — which payment methods a store has
