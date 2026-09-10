@@ -4,7 +4,30 @@
  * throwaway database — never the real data/db.json.
  *
  *   node tests/run.js
+ *
+ * HARD SAFETY GUARD: this suite must NEVER run against a real Supabase
+ * project. It was discovered (2026-09-10) that an earlier run had done
+ * exactly that — twice — leaving 142 fake test tenants (and all their
+ * cascaded products/orders/etc.) sitting in the live production
+ * marketplace for over a week before anyone noticed. This guard makes
+ * that structurally impossible going forward: if SUPABASE_URL or
+ * SUPABASE_SERVICE_ROLE_KEY are present in the environment at all (e.g.
+ * because they're set in .env and something loaded it, or exported in
+ * the shell), the suite refuses to start. There is no legitimate reason
+ * for this file/driver test run to ever see real Supabase credentials —
+ * it always forces AUTH_DRIVER to the local file driver below anyway.
  */
+if (process.env.SUPABASE_URL || process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('FATAL: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is set in this environment.');
+  console.error('This test suite only ever runs against a local throwaway file-driver');
+  console.error('database and must NEVER be run with real Supabase credentials present —');
+  console.error('doing so once before created 142 fake tenants in the live production');
+  console.error('marketplace. Unset these variables (check your shell and .env file)');
+  console.error('before running tests.');
+  process.exit(1);
+}
+process.env.HADAM_AUTH_DRIVER = ''; // force the local file driver, never Supabase, regardless of what's already set
+
 const fs = require('fs');
 const path = require('path');
 
