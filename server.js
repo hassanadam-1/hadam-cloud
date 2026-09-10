@@ -2477,6 +2477,7 @@ route('POST', '/api/auth/forgot-password', { hostScope: 'any' }, async (req, res
     // the real incoming request host fixes that for every store, not just
     // one hardcoded domain.
     const redirectTo = `${req.headers['x-forwarded-proto'] || 'http'}://${req.headers.host}/`;
+    console.error('[DEBUG forgot-password] host header:', req.headers.host, '| x-forwarded-proto:', req.headers['x-forwarded-proto'], '| computed redirectTo:', redirectTo);
     if (email) {
       logAuthEvent({ email, tenantId: tenant ? tenant.id : null, eventType: 'password_reset_requested', req });
       try { await authSupabase.requestPasswordReset(email, redirectTo); } catch { /* never reveal whether it worked — same principle as the custom driver below */ }
