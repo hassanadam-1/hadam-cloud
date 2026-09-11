@@ -5259,31 +5259,41 @@ route('GET', '/api/admin/export', { hostScope: 'tenant', auth: true, roles: ['ad
   let exportData;
   if (AUTH_DRIVER === 'supabase') {
     const client = supabaseForRequest(bearerToken(req));
-    const [{ data: categories }, { data: products }, { data: orders }, { data: memberships }] = await Promise.all([
+    const [{ data: categories }, { data: products }, { data: orders }, { data: memberships }, { data: images }] = await Promise.all([
       client.from('categories').select('*').eq('tenant_id', tenant.id),
       client.from('products').select('*, categories(*)').eq('tenant_id', tenant.id),
       client.from('orders').select('*, order_items(*)').eq('tenant_id', tenant.id),
       supabaseAdmin().from('tenant_memberships').select('user_id, role').eq('tenant_id', tenant.id),
+      client.from('product_images').select('product_id, storage_path, filename, uploaded_at').eq('tenant_id', tenant.id),
     ]);
     const team = [];
     for (const m of memberships || []) {
       const { data: authUser } = await supabaseAdmin().auth.admin.getUserById(m.user_id);
       if (authUser && authUser.user) team.push({ id: m.user_id, email: authUser.user.email, name: authUser.user.user_metadata?.full_name || '', role: m.role });
     }
+    const imagesByProduct = {};
+    for (const img of images || []) {
+      (imagesByProduct[img.product_id] = imagesByProduct[img.product_id] || []).push({ storagePath: img.storage_path, filename: img.filename, uploadedAt: img.uploaded_at });
+    }
     exportData = {
+      exportFormat: 'hadam-store-export-v1',
       exportedAt: new Date().toISOString(),
-      store: { name: tenant.name, subdomain: tenant.subdomain, plan: tenant.plan, subscriptionTier: tenant.subscriptionTier },
+      store: { name: tenant.name, subdomain: tenant.subdomain, plan: tenant.plan, subscriptionTier: tenant.subscriptionTier, tagline: tenant.tagline, description: tenant.description, translations: tenant.translations || {} },
       categories: (categories || []).map(c => rowToCategory(c)),
-      products: (products || []).map(p => rowToProduct({ ...p, product_images: [] })), // includes sku, the permanent product code, for every product
+      // images: storage references only (path + filename) — never the binaries or a
+      // signed/temporary URL, per the explicit data-export privacy scope. Re-uploading
+      // to a new store still requires pulling each file from Storage separately.
+      products: (products || []).map(p => ({ ...rowToProduct({ ...p, product_images: [] }), images: imagesByProduct[p.id] || [] })), // includes sku, the permanent product code, for every product
       orders: (orders || []).map(orderRowForClient),
       team,
     };
   } else {
     exportData = {
+      exportFormat: 'hadam-store-export-v1',
       exportedAt: new Date().toISOString(),
-      store: { name: tenant.name, subdomain: tenant.subdomain, plan: tenant.plan, subscriptionTier: tenant.subscriptionTier },
+      store: { name: tenant.name, subdomain: tenant.subdomain, plan: tenant.plan, subscriptionTier: tenant.subscriptionTier, tagline: tenant.tagline, description: tenant.description, translations: tenant.translations || {} },
       categories: db.categories.filter(c => c.tenantId === tenant.id),
-      products: db.products.filter(p => p.tenantId === tenant.id), // already includes sku
+      products: db.products.filter(p => p.tenantId === tenant.id).map(p => ({ ...p, images: (p.images || []).map(img => ({ storagePath: img.path || img.url || null, filename: img.filename || null })) })), // already includes sku
       orders: db.orders.filter(o => o.tenantId === tenant.id),
       team: db.users.filter(u => u.tenantId === tenant.id).map(publicUser), // publicUser strips passwordHash
     };
