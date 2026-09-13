@@ -2401,11 +2401,30 @@ route('POST', '/api/admin/store/renew', { hostScope: 'tenant', auth: true, roles
   // store that is currently on, and staying on, the free starter tier is
   // exempt.
   let currentTierName = 'starter';
+  let currentExpiryForEligibility = null;
   if (AUTH_DRIVER === 'supabase') {
     const { data: currentSubForCheck } = await supabaseAdmin().from('current_subscriptions').select('*, plans(name)').eq('tenant_id', tenant.id).maybeSingle();
     if (currentSubForCheck && currentSubForCheck.plans) currentTierName = currentSubForCheck.plans.name;
+    if (currentSubForCheck) currentExpiryForEligibility = new Date(currentSubForCheck.expiry_date).getTime();
   } else {
     currentTierName = tenant.subscriptionTier || 'starter';
+    currentExpiryForEligibility = tenant.subscriptionExpiresAt || null;
+  }
+  // Eligibility gate (real pre-launch bug fix): a plain renewal of the SAME
+  // tier is blocked with more than 7 days remaining -- the Help Centre and
+  // the admin UI's own tooltip have always documented this rule, but no
+  // server-side code actually enforced it until now. An explicit tier
+  // CHANGE is always allowed regardless of days remaining, matching the
+  // documented "that's always treated as an explicit change, never
+  // blocked" behavior. This must live here, server-side, not just as a
+  // disabled button in the UI, since the API can otherwise be called
+  // directly to bypass a UI-only restriction.
+  const isTierChange = targetTier !== undefined && targetTier !== currentTierName;
+  if (!isTierChange && currentExpiryForEligibility !== null) {
+    const daysLeft = Math.ceil((currentExpiryForEligibility - Date.now()) / (24 * 60 * 60 * 1000));
+    if (daysLeft > 7) {
+      return send(res, 400, { error: `Renewal is not available yet. You can renew when 7 days or fewer remain (${daysLeft} days left). To switch tiers instead, choose a different tier on the Sale on Hadam page.` });
+    }
   }
   const paymentRequired = (targetTier && targetTier !== 'starter') || (!targetTier && currentTierName !== 'starter');
   if (paymentRequired) {
