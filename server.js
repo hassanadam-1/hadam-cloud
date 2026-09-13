@@ -2404,6 +2404,7 @@ route('POST', '/api/admin/store/renew', { hostScope: 'tenant', auth: true, roles
   let currentExpiryForEligibility = null;
   if (AUTH_DRIVER === 'supabase') {
     const { data: currentSubForCheck } = await supabaseAdmin().from('current_subscriptions').select('*, plans(name)').eq('tenant_id', tenant.id).maybeSingle();
+    console.error('[DEBUG renew-eligibility] tenant.id:', tenant.id, '| currentSubForCheck:', JSON.stringify(currentSubForCheck));
     if (currentSubForCheck && currentSubForCheck.plans) currentTierName = currentSubForCheck.plans.name;
     if (currentSubForCheck) currentExpiryForEligibility = new Date(currentSubForCheck.expiry_date).getTime();
   } else {
