@@ -2296,9 +2296,15 @@ function statusExtra(i, orderId) {
     }
   }
   if (i.fulfillment === 'booking' && i.scheduledAt) parts.push(`<span class="hint" style="margin:0">${localeDate(new Date(i.scheduledAt))}</span>`);
-  if (i.fulfillment === 'booking' && i.meetingLink && i.status !== 'refunded') {
+  // Access to the meeting link is withdrawn as soon as a refund is requested —
+  // not just once it's fully processed — since continuing to offer the link
+  // while a refund is pending or approved would let someone get their money
+  // back and keep attending. It's restored automatically if staff reject the
+  // refund request, since access should never have been revoked in that case.
+  const meetingLinkBlocked = i.status === 'refunded' || i.refundStatus === 'requested' || i.refundStatus === 'approved';
+  if (i.fulfillment === 'booking' && i.meetingLink && !meetingLinkBlocked) {
     parts.push(`<a href="${esc(i.meetingLink)}" target="_blank" rel="noopener" class="btn sm secondary">🔗 ${t('joinMeetingBtn')}</a>`);
-  } else if (i.fulfillment === 'booking' && !i.meetingLink && i.status !== 'refunded') {
+  } else if (i.fulfillment === 'booking' && !i.meetingLink && !meetingLinkBlocked) {
     parts.push(`<span class="hint" style="margin:0">${t('meetingLinkPendingHint') || 'A meeting link will be provided once available — we\'ll email it to you.'}</span>`);
   }
   if (i.refundStatus === 'requested') {
@@ -2445,6 +2451,7 @@ async function renderEmployeeTab() {
               <span>${ICONS[i.fulfillment]} ${esc(localized(i,'name'))} <span style="color:var(--text-dim)">$${i.price.toFixed(2)} × ${i.qty}</span></span>
               <span style="display:flex;align-items:center;gap:8px;">
                 <span class="status-pill ${i.status}">${i.status.replace('_',' ')}</span>
+                ${i.fulfillment === 'booking' && o.paymentStatus === 'success' ? (i.meetingLink ? `<a href="${esc(i.meetingLink)}" target="_blank" rel="noopener" class="btn ghost sm">🔗 ${t('joinMeetingBtn')}</a>` : `<span class="hint" style="margin:0;">${t('meetingLinkPendingHint') || 'No meeting link set'}</span>`) : ''}
                 ${i.refundStatus === 'requested' ? `<button class="btn sm" onclick="decideRefund('${o.id}','${i.productId}','approve')">${t('approveRefundBtn') || 'Approve'}</button><button class="btn sm danger" onclick="decideRefund('${o.id}','${i.productId}','reject')">${t('rejectRefundBtn') || 'Reject'}</button>`
                   : i.refundStatus === 'approved' ? `<span class="hint" style="margin:0;">${t('refundApprovedAwaitingPaymentLabel') || 'Awaiting customer payment'}</span>`
                   : i.refundStatus === 'rejected' ? `<span class="hint" style="margin:0;">${t('refundRejectedByStaffLabel') || 'Refund rejected'}</span>`
@@ -2578,7 +2585,7 @@ async function renderAdminTab() {
       </div>
     </div>`;
   } else if (state.adminTab === 'products') {
-    const { products } = await api('/api/products');
+    const { products } = await api('/api/admin/products');
     state._products = products;
     // This is a secondary, non-essential lookup (just for the "no file"
     // warning badge) — if it fails for any reason, the products list itself
@@ -2962,7 +2969,12 @@ async function saveAccessSettings() {
   } catch (e) { msg.innerHTML = `<div class="msg error">${esc(e.message)}</div>`; }
 }
 function openProductForm(id) {
-  const p = id ? state.products.find(x => x.id === id) : null;
+  // Sourced from state._products (the admin-authenticated /api/admin/products
+  // list), not state.products (the public storefront list) — the public list
+  // deliberately strips the meeting link before it ever reaches a shopper's
+  // browser, so using it here meant this form could never show an admin their
+  // own already-saved meeting link when reopening a product to edit it.
+  const p = id ? state._products.find(x => x.id === id) : null;
   state._editingTranslatable = p;
   const existingLangs = p && p.translations ? Object.keys(p.translations) : [];
   document.getElementById('genericModalContent').innerHTML = `
@@ -3052,7 +3064,7 @@ function renderProductsTable() {
         <td>${image ? `<img src="${image.url}" style="width:28px;height:28px;object-fit:cover;border-radius:4px;flex-shrink:0;" alt="${esc(image.filename)}">` : ''}</td>
         <td>${esc(localized(p, 'name'))} ${state._missingFileIds.has(p.id) ? `<span class="status-pill cancelled" title="${t('noFileWarningTooltip')}">⚠ ${t('noFileWarningBadge')}</span>` : ''}</td><td>${p.sku ? esc(p.sku) : '—'}</td><td>${esc(localized(p.category, 'name'))}</td><td>$${p.price.toFixed(2)}</td>
         <td><button class="btn ghost sm" onclick='openProductForm(${JSON.stringify(p.id)})'>${t('edit')}</button>
-        <button class="btn danger sm" onclick="deleteProduct('${p.id}')">${t('delete')}</button></td></tr>`;
+        <button class="btn danger sm" onclick="deleteProduct('${p.id}')">${t('delete')}</button>${p.category && p.category.fulfillment === 'booking' ? (p.meetingLink ? ` <a href="${esc(p.meetingLink)}" target="_blank" rel="noopener" class="btn ghost sm">🔗 ${t('joinMeetingBtn')}</a>` : ` <span class="hint" style="margin:0;">${t('meetingLinkPendingHint') || 'No meeting link set'}</span>`) : ''}</td></tr>`;
       }).join('')}
       </tbody></table>`;
 }
