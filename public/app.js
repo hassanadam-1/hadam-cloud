@@ -1423,8 +1423,10 @@ function renderCatalog() {
   grid.innerHTML = list.length === 0 ? `<div class="empty" style="grid-column:1/-1">No products match.</div>` :
     list.map(p => `
       <div class="card" onclick="viewProduct('${p.id}')">
-        <div class="card-thumb" style="background:${catThumbBg(p.category.fulfillment)}">
-          <span class="tag">${esc(localized(p.category,'name'))}</span>${ICONS[p.category.fulfillment]}
+        <div class="card-thumb" style="background:${catThumbBg(p.category.fulfillment)};overflow:hidden;">
+          ${p.images && p.images.length > 0
+            ? `<img src="${p.images[0].url}" style="width:100%;height:100%;object-fit:cover;" alt="${esc(p.images[0].filename || '')}">`
+            : `<span class="tag">${esc(localized(p.category,'name'))}</span>${ICONS[p.category.fulfillment]}`}
         </div>
         <div class="card-body">
           <h3>${esc(localized(p,'name'))}</h3><p>${esc(localized(p,'description'))}</p>
@@ -1442,7 +1444,11 @@ function viewProduct(id) {
   document.getElementById('productDetail').innerHTML = `
     <a href="#" onclick="go('home');return false;" style="color:var(--text-dim);font-size:13px;">← Back to catalog</a>
     <div style="display:grid;grid-template-columns:280px 1fr;gap:30px;margin-top:16px;">
-      <div style="height:220px;border-radius:14px;background:${catThumbBg(p.category.fulfillment)};display:flex;align-items:center;justify-content:center;font-size:70px;">${ICONS[p.category.fulfillment]}</div>
+      <div style="height:220px;border-radius:14px;background:${catThumbBg(p.category.fulfillment)};display:flex;align-items:center;justify-content:center;font-size:70px;overflow:hidden;">
+        ${p.images && p.images.length > 0
+          ? `<img src="${p.images[0].url}" style="width:100%;height:100%;object-fit:cover;" alt="${esc(p.images[0].filename || '')}">`
+          : ICONS[p.category.fulfillment]}
+      </div>
       <div>
         <div style="font-family:var(--font-mono);font-size:11px;color:var(--accent-2);text-transform:uppercase;">${esc(localized(p.category,'name'))} · ${p.category.fulfillment}</div>
         <h1 style="font-family:var(--font-display);font-size:26px;margin:8px 0;">${esc(localized(p,'name'))}</h1>
@@ -3038,10 +3044,15 @@ function renderProductsTable() {
   const container = document.getElementById('productsTableContainer');
   const search = (document.getElementById('productSearch').value || '').toLowerCase();
   const products = (state._products || []).filter(p => !search || p.name.toLowerCase().includes(search) || (p.sku && p.sku.toLowerCase().includes(search)));
-  container.innerHTML = `<table><thead><tr><th>${t('nameCol')}</th><th>${t('productCodeCol')}</th><th>${t('categoryCol')}</th><th>${t('priceCol')}</th><th></th></tr></thead><tbody>
-      ${products.map(p=>`<tr><td>${esc(localized(p, 'name'))} ${state._missingFileIds.has(p.id) ? `<span class="status-pill cancelled" title="${t('noFileWarningTooltip')}">⚠ ${t('noFileWarningBadge')}</span>` : ''}</td><td>${p.sku ? esc(p.sku) : '—'}</td><td>${esc(localized(p.category, 'name'))}</td><td>$${p.price.toFixed(2)}</td>
+  container.innerHTML = `<table><thead><tr><th></th><th>${t('nameCol')}</th><th>${t('productCodeCol')}</th><th>${t('categoryCol')}</th><th>${t('priceCol')}</th><th></th></tr></thead><tbody>
+      ${products.map(p=>{
+        const image = p.images && p.images[0];
+        return `<tr>
+        <td>${image ? `<img src="${image.url}" style="width:28px;height:28px;object-fit:cover;border-radius:4px;flex-shrink:0;" alt="${esc(image.filename)}">` : ''}</td>
+        <td>${esc(localized(p, 'name'))} ${state._missingFileIds.has(p.id) ? `<span class="status-pill cancelled" title="${t('noFileWarningTooltip')}">⚠ ${t('noFileWarningBadge')}</span>` : ''}</td><td>${p.sku ? esc(p.sku) : '—'}</td><td>${esc(localized(p.category, 'name'))}</td><td>$${p.price.toFixed(2)}</td>
         <td><button class="btn ghost sm" onclick='openProductForm(${JSON.stringify(p.id)})'>${t('edit')}</button>
-        <button class="btn danger sm" onclick="deleteProduct('${p.id}')">${t('delete')}</button></td></tr>`).join('')}
+        <button class="btn danger sm" onclick="deleteProduct('${p.id}')">${t('delete')}</button></td></tr>`;
+      }).join('')}
       </tbody></table>`;
 }
 async function renderDigitalProductsTab(body) {
