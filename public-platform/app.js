@@ -685,7 +685,18 @@ function siblingHostSuffix() {
   const parts = window.location.host.split('.');
   return parts.length > 1 ? parts.slice(1).join('.') : parts[0];
 }
-function storeLinkUrl(subdomain) { return `${window.location.protocol}//${subdomain}.${siblingHostSuffix()}?lang=${state.lang}`; }
+// Real bug fix: the function above assumes it's always running on a tenant
+// subdomain (e.g. sport-store.hadamplatform.com), where stripping the first
+// label correctly yields "hadamplatform.com". On the PLATFORM's own root
+// pages (hadamplatform.com itself -- exactly where the Marketplace directory
+// lives), that same assumption breaks: it strips "hadamplatform" instead,
+// leaving just "com", so every store link in the directory pointed at
+// "<subdomain>.com" instead of the real "<subdomain>.hadamplatform.com".
+// storeLinkUrl now uses state.baseDomain (fetched from the server's own
+// /api/platform/directory and /api/platform/tenants responses, correctly
+// initialized to 'hadamplatform.com') instead, which is correct regardless
+// of which page happens to be calling it.
+function storeLinkUrl(subdomain) { return `${window.location.protocol}//${subdomain}.${state.baseDomain}?lang=${state.lang}`; }
 const PLAN_LABELS = {
   en: { store: 'Store', marketplace: 'Marketplace', both: 'Store + Marketplace' },
   ar: { store: 'متجر', marketplace: 'سوق', both: 'متجر + سوق' },
@@ -717,11 +728,12 @@ async function renderMarketplace() {
       </div>`).join('');
 
   const { stores, externalMembers, baseDomain } = await api('/api/platform/directory');
+  if (baseDomain) state.baseDomain = baseDomain;
   const storeCards = stores.map(s => `
       <div class="store-card">
         <h4>${esc(localized(s,'name'))} <span class="role-badge">${planLabel(s.plan)}</span></h4>
         <p class="tagline">${esc(localized(s,'tagline') || t('noTagline'))} · ${s.productCount} ${s.productCount === 1 ? t('productSingular') : t('productPlural')}</p>
-        <a href="${storeLinkUrl(s.subdomain)}" target="_blank" style="font-family:var(--font-mono);color:var(--accent);font-size:13px;">${s.subdomain}.${siblingHostSuffix()}</a>
+        <a href="${storeLinkUrl(s.subdomain)}" target="_blank" style="font-family:var(--font-mono);color:var(--accent);font-size:13px;">${s.subdomain}.${state.baseDomain}</a>
       </div>`).join('');
   const externalCards = (externalMembers || []).map(m => `
       <div class="store-card">
@@ -994,17 +1006,19 @@ async function createTenant() {
       }),
     });
     state.baseDomain = data.storeUrl.split('://')[1].split('.').slice(1).join('.');
-    // The server's storeUrl uses its configured production domain (e.g. hadamplatform.com), which
-    // isn't a real, resolvable address during local testing — show the actual working link
-    // (built from whatever host you're really on right now) as the primary, clickable one.
-    const realLink = storeLinkUrl(subdomain);
+    // Previously this substituted a locally-computed link here, on the assumption
+    // the server's own storeUrl (built from the real production domain) wouldn't
+    // resolve during local development testing. That's no longer the right default:
+    // once deployed with real wildcard DNS configured (as production now is), the
+    // server's storeUrl IS the correct, resolvable address, and using anything else
+    // here previously showed users a broken link (e.g. "yourstore.com" instead of
+    // "yourstore.hadamplatform.com"). Always show the server's own URL directly.
     document.getElementById('resultContent').innerHTML = `
       <div class="panel" style="max-width:480px;margin:60px auto;text-align:center;">
         <h3>✓ ${esc(data.tenant.name)} ${t('storeReady')}</h3>
         <p style="color:var(--text-dim);font-size:14px;">Your store — click to open it now:</p>
-        <a href="${realLink}" target="_blank" style="display:block;font-family:var(--font-mono);color:var(--accent);font-size:16px;margin-bottom:14px;">${esc(realLink)}</a>
+        <a href="${data.storeUrl}" target="_blank" style="display:block;font-family:var(--font-mono);color:var(--accent);font-size:16px;margin-bottom:14px;">${esc(data.storeUrl)}</a>
         <div class="hint">Log in there with the admin email and password you just set. Your store starts with an empty catalog by design — add your categories and products from Admin.</div>
-        <div class="hint" style="margin-top:10px;">In a real production deployment (not this local test), the same store would live at <code>${esc(data.storeUrl)}</code> once wildcard DNS for that domain is set up — that address won't work here since nothing is hosted there yet.</div>
       </div>`;
     go('result');
   } catch (e) { msg.innerHTML = `<div class="msg error">${esc(e.message)}</div>`; }
