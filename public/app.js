@@ -2410,7 +2410,7 @@ async function renderEmployeeTab() {
               <input id="sched-${q.orderId}-${q.item.productId}" type="datetime-local">
             </div>
             <button class="btn sm" style="margin-top:8px" onclick="updateItem('${q.orderId}','${q.item.productId}','booking')">${t('save')}</button>
-            ${q.item.meetingLink ? `<div style="margin-top:8px;"><a href="${esc(q.item.meetingLink)}" target="_blank" rel="noopener" class="btn sm secondary">🔗 ${t('joinMeetingBtn')}</a></div>` : `<div class="hint" style="margin-top:8px;">${t('meetingLinkPendingHint') || 'No meeting link set on this product yet.'}</div>`}
+            ${q.item.status === 'refunded' || q.item.refundStatus === 'requested' || q.item.refundStatus === 'approved' ? `<div class="hint" style="margin-top:8px;">${t('meetingLinkRevokedHint') || 'Meeting link hidden — refund requested/processed.'}</div>` : q.item.meetingLink ? `<div style="margin-top:8px;"><a href="${esc(q.item.meetingLink)}" target="_blank" rel="noopener" class="btn sm secondary">🔗 ${t('joinMeetingBtn')}</a></div>` : `<div class="hint" style="margin-top:8px;">${t('meetingLinkPendingHint') || 'No meeting link set on this product yet.'}</div>`}
           ` : `
             <div class="row2" style="margin-top:8px;">
               <select id="sel-${q.orderId}-${q.item.productId}">
@@ -2451,7 +2451,7 @@ async function renderEmployeeTab() {
               <span>${ICONS[i.fulfillment]} ${esc(localized(i,'name'))} <span style="color:var(--text-dim)">$${i.price.toFixed(2)} × ${i.qty}</span></span>
               <span style="display:flex;align-items:center;gap:8px;">
                 <span class="status-pill ${i.status}">${i.status.replace('_',' ')}</span>
-                ${i.fulfillment === 'booking' && o.paymentStatus === 'success' ? (i.meetingLink ? `<a href="${esc(i.meetingLink)}" target="_blank" rel="noopener" class="btn ghost sm">🔗 ${t('joinMeetingBtn')}</a>` : `<span class="hint" style="margin:0;">${t('meetingLinkPendingHint') || 'No meeting link set'}</span>`) : ''}
+                ${i.fulfillment === 'booking' && o.paymentStatus === 'success' ? (i.status === 'refunded' || i.refundStatus === 'requested' || i.refundStatus === 'approved' ? `<span class="hint" style="margin:0;">${t('meetingLinkRevokedHint') || 'Link hidden — refund requested/processed'}</span>` : i.meetingLink ? `<a href="${esc(i.meetingLink)}" target="_blank" rel="noopener" class="btn ghost sm">🔗 ${t('joinMeetingBtn')}</a>` : `<span class="hint" style="margin:0;">${t('meetingLinkPendingHint') || 'No meeting link set'}</span>`) : ''}
                 ${i.refundStatus === 'requested' ? `<button class="btn sm" onclick="decideRefund('${o.id}','${i.productId}','approve')">${t('approveRefundBtn') || 'Approve'}</button><button class="btn sm danger" onclick="decideRefund('${o.id}','${i.productId}','reject')">${t('rejectRefundBtn') || 'Reject'}</button>`
                   : i.refundStatus === 'approved' ? `<span class="hint" style="margin:0;">${t('refundApprovedAwaitingPaymentLabel') || 'Awaiting customer payment'}</span>`
                   : i.refundStatus === 'rejected' ? `<span class="hint" style="margin:0;">${t('refundRejectedByStaffLabel') || 'Refund rejected'}</span>`
