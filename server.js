@@ -4053,6 +4053,22 @@ route('GET', '/api/products', { hostScope: 'tenant' }, async (req, res, params, 
   send(res, 200, { products: list });
 });
 
+// Admin-authenticated equivalent of GET /api/products — used by the admin Products
+// table and the product edit form. Unlike the public route above, this deliberately
+// does NOT strip meetingLink: it's only ever reachable by an authenticated store
+// admin viewing/editing their own store's own products, not by anonymous shoppers.
+route('GET', '/api/admin/products', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
+  if (AUTH_DRIVER === 'supabase') {
+    const client = supabaseForRequest(bearerToken(req));
+    const { data, error } = await client.from('products').select('*, categories(*), product_images(*), download_products(*)').eq('tenant_id', tenant.id);
+    if (error) return send(res, 500, { error: error.message });
+    const list = data.map(row => rowToProduct(row));
+    return send(res, 200, { products: list });
+  }
+  const list = db.products.filter(p => p.tenantId === tenant.id).map(p => ({ ...p, category: findCategory(p.categoryId, tenant.id) }));
+  send(res, 200, { products: list });
+});
+
 route('GET', '/api/products/:id', { hostScope: 'tenant' }, async (req, res, params, body, query, user, tenant) => {
   if (AUTH_DRIVER === 'supabase') {
     const { data, error } = await supabaseAnon.from('products').select('*, categories(*), product_images(*), download_products(*)').eq('id', params.id).eq('tenant_id', tenant.id).maybeSingle();
@@ -5051,7 +5067,7 @@ route('PATCH', '/api/employee/orders/:orderId/items/:productId', { hostScope: 't
 route('GET', '/api/employee/orders', { hostScope: 'tenant', auth: true, roles: ['employee', 'admin'] }, async (req, res, params, body, query, user, tenant) => {
   if (AUTH_DRIVER === 'supabase') {
     const client = supabaseForRequest(bearerToken(req));
-    const { data, error } = await client.from('orders').select('*, order_items(*)').eq('tenant_id', tenant.id).order('created_at', { ascending: false });
+    const { data, error } = await client.from('orders').select('*, order_items(*, products(meeting_link))').eq('tenant_id', tenant.id).order('created_at', { ascending: false });
     if (error) return send(res, 500, { error: error.message });
     return send(res, 200, { orders: data.map(orderRowForClient) });
   }
