@@ -4930,7 +4930,7 @@ route('POST', '/api/admin/orders/:orderId/items/:productId/run-tracking-self-tes
 route('GET', '/api/employee/queue', { hostScope: 'tenant', auth: true, roles: ['employee', 'admin'] }, async (req, res, params, body, query, user, tenant) => {
   if (AUTH_DRIVER === 'supabase') {
     const client = supabaseForRequest(bearerToken(req));
-    const { data, error } = await client.from('orders').select('*, order_items(*)').eq('tenant_id', tenant.id).eq('payment_status', 'success');
+    const { data, error } = await client.from('orders').select('*, order_items(*, products(meeting_link))').eq('tenant_id', tenant.id).eq('payment_status', 'success');
     if (error) return send(res, 500, { error: error.message });
     const queue = [];
     for (const o of data) {

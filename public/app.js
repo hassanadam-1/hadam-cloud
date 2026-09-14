@@ -2404,6 +2404,7 @@ async function renderEmployeeTab() {
               <input id="sched-${q.orderId}-${q.item.productId}" type="datetime-local">
             </div>
             <button class="btn sm" style="margin-top:8px" onclick="updateItem('${q.orderId}','${q.item.productId}','booking')">${t('save')}</button>
+            ${q.item.meetingLink ? `<div style="margin-top:8px;"><a href="${esc(q.item.meetingLink)}" target="_blank" rel="noopener" class="btn sm secondary">🔗 ${t('joinMeetingBtn')}</a></div>` : `<div class="hint" style="margin-top:8px;">${t('meetingLinkPendingHint') || 'No meeting link set on this product yet.'}</div>`}
           ` : `
             <div class="row2" style="margin-top:8px;">
               <select id="sel-${q.orderId}-${q.item.productId}">
