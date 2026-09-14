@@ -3679,9 +3679,9 @@ async function deleteCategory(id) {
 function openEmployeeForm() {
   document.getElementById('genericModalContent').innerHTML = `
     <h3>${t('addStaffAccountH3') || 'Add staff account'}</h3>
-    <div class="field"><label>${t('nameCol')}</label><input id="efName"></div>
-    <div class="field"><label>${t('emailCol')}</label><input id="efEmail" type="email"></div>
-    <div class="field"><label>${t('password')}</label><input id="efPass" type="password"></div>
+    <div class="field"><label>${t('nameCol')}</label><input id="efName" autocomplete="off"></div>
+    <div class="field"><label>${t('emailCol')}</label><input id="efEmail" type="email" autocomplete="off"></div>
+    <div class="field"><label>${t('password')}</label><input id="efPass" type="password" autocomplete="new-password"></div>
     <div class="field"><label>${t('roleCol')}</label><select id="efRole"><option value="employee">${t('employeeRoleOpt')}</option><option value="admin">${t('adminRoleOpt')}</option></select></div>
     <button class="btn full" onclick="saveEmployee()">${t('addAccountBtn')}</button>`;
   openModal('genericOverlay');
