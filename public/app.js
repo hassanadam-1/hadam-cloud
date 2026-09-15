@@ -34,6 +34,9 @@ const I18N = {
     helpFqSelfTestWhat: 'Nothing — this runs automatically once you click it, no input needed.', helpFqSelfTestWhy: 'Verifies the entire delivery-confirmation pipeline actually works end-to-end (status update, customer visibility, confirmation, dispute) using this real order item.', helpFqSelfTestNext: 'It temporarily changes this item\'s status and tracking note while testing, then automatically restores every value back to exactly what it was before — nothing about this order is permanently affected.', helpFqSelfTestRules: 'Safe to run on a real order at any time; it does not notify the customer or change what they see.',
     helpEmployeeOrdersWhy: 'This is a read-only view of every order at your store, regardless of status — useful for looking something up when you don\'t know which item is in the active Fulfillment Queue.', helpEmployeeOrdersNext: 'To actually update a status or tracking note, use the Fulfillment Queue tab instead — this view is for finding and refunding, not day-to-day processing.',
     pay: 'Pay', logInToCheckOut: 'Log in to check out', myOrdersTitle: 'My orders', noOrdersYet: 'No orders yet.',
+    myOrdersTab: 'My Orders', myMessagesTab: 'My Messages', supportTab: 'Support Messages', noMessagesYet: 'No messages yet.',
+    openMessagesLabel: 'Open', resolvedMessagesLabel: 'Resolved', yourMessageLabel: 'Your message', staffReplyLabel: 'Reply', awaitingReplyLabel: 'Awaiting a reply',
+    replyBoxPlaceholder: 'Type your reply…', sendReplyBtn: 'Send reply', markResolvedBtn: 'Mark resolved', reopenBtn: 'Reopen', noSupportMessagesYet: 'No support messages yet.',
     download: 'Download', downloadImageBtn: 'Download image', storesOnHadam: 'Stores on Hadam', saleOnHadam: 'Sale on Hadam',
     saleOnHadamBlurb: "Looking for more? Browse every store on Hadam's shared Marketplace.",
     logIn: 'Log in', createAccount: 'Create account', email: 'Email', password: 'Password', name: 'Name',
@@ -272,6 +275,9 @@ const I18N = {
     helpFqSelfTestWhat: 'لا شيء — يعمل هذا تلقائيًا بمجرد النقر عليه، لا حاجة لأي إدخال.', helpFqSelfTestWhy: 'يتحقق من أن مسار تأكيد التسليم بأكمله يعمل فعليًا من البداية إلى النهاية (تحديث الحالة، رؤية العميل، التأكيد، النزاع) باستخدام عنصر الطلب الحقيقي هذا.', helpFqSelfTestNext: 'يغيّر مؤقتًا حالة هذا العنصر وملاحظة التتبع أثناء الاختبار، ثم يستعيد تلقائيًا كل قيمة إلى ما كانت عليه بالضبط قبل ذلك — لا يتأثر شيء بشكل دائم في هذا الطلب.', helpFqSelfTestRules: 'آمن للتشغيل على طلب حقيقي في أي وقت؛ لا يُخطر العميل ولا يغيّر ما يراه.',
     helpEmployeeOrdersWhy: 'هذا عرض للقراءة فقط لكل طلب في متجرك، بغض النظر عن الحالة — مفيد للبحث عن شيء عندما لا تعرف أي عنصر موجود في قائمة التنفيذ النشطة.', helpEmployeeOrdersNext: 'لتحديث الحالة أو ملاحظة التتبع فعليًا، استخدم علامة تبويب قائمة التنفيذ بدلًا من ذلك — هذا العرض للبحث والاسترداد، وليس للمعالجة اليومية.',
     pay: 'ادفع', logInToCheckOut: 'سجّل الدخول لإتمام الشراء', myOrdersTitle: 'طلباتي', noOrdersYet: 'لا توجد طلبات بعد.',
+    myOrdersTab: 'طلباتي', myMessagesTab: 'رسائلي', supportTab: 'رسائل الدعم', noMessagesYet: 'لا توجد رسائل بعد.',
+    openMessagesLabel: 'مفتوحة', resolvedMessagesLabel: 'محلولة', yourMessageLabel: 'رسالتك', staffReplyLabel: 'الرد', awaitingReplyLabel: 'بانتظار الرد',
+    replyBoxPlaceholder: 'اكتب ردك…', sendReplyBtn: 'إرسال الرد', markResolvedBtn: 'وضع علامة كمحلولة', reopenBtn: 'إعادة الفتح', noSupportMessagesYet: 'لا توجد رسائل دعم بعد.',
     download: 'تحميل', downloadImageBtn: 'تنزيل الصورة', storesOnHadam: 'المتاجر على هدام', saleOnHadam: 'البيع على هدام',
     saleOnHadamBlurb: 'تريد المزيد؟ تصفح جميع المتاجر على سوق هدام المشترك.',
     logIn: 'تسجيل الدخول', createAccount: 'إنشاء حساب', email: 'البريد الإلكتروني', password: 'كلمة المرور', name: 'الاسم',
@@ -510,6 +516,9 @@ const I18N = {
     helpFqSelfTestWhat: "Rien — cela s'exécute automatiquement dès que vous cliquez, aucune saisie nécessaire.", helpFqSelfTestWhy: "Vérifie que tout le pipeline de confirmation de livraison fonctionne réellement de bout en bout (mise à jour du statut, visibilité client, confirmation, litige) en utilisant cet article de commande réel.", helpFqSelfTestNext: "Cela modifie temporairement le statut et la note de suivi de cet article pendant le test, puis restaure automatiquement chaque valeur exactement comme avant — rien n'est affecté de façon permanente sur cette commande.", helpFqSelfTestRules: "Peut être exécuté en toute sécurité sur une commande réelle à tout moment ; cela ne notifie pas le client et ne change pas ce qu'il voit.",
     helpEmployeeOrdersWhy: "Il s'agit d'une vue en lecture seule de toutes les commandes de votre boutique, quel que soit leur statut — utile pour rechercher quelque chose lorsque vous ne savez pas quel article se trouve dans la File de traitement active.", helpEmployeeOrdersNext: "Pour réellement mettre à jour un statut ou une note de suivi, utilisez plutôt l'onglet File de traitement — cette vue sert à rechercher et rembourser, pas au traitement quotidien.",
     pay: 'Payer', logInToCheckOut: 'Connectez-vous pour payer', myOrdersTitle: 'Mes commandes', noOrdersYet: 'Aucune commande pour le moment.',
+    myOrdersTab: 'Mes commandes', myMessagesTab: 'Mes messages', supportTab: 'Messages du support', noMessagesYet: 'Aucun message pour le moment.',
+    openMessagesLabel: 'Ouverts', resolvedMessagesLabel: 'Résolus', yourMessageLabel: 'Votre message', staffReplyLabel: 'Réponse', awaitingReplyLabel: 'En attente de réponse',
+    replyBoxPlaceholder: 'Tapez votre réponse…', sendReplyBtn: 'Envoyer la réponse', markResolvedBtn: 'Marquer comme résolu', reopenBtn: 'Rouvrir', noSupportMessagesYet: 'Aucun message de support pour le moment.',
     download: 'Télécharger', downloadImageBtn: "Télécharger l'image", storesOnHadam: 'Boutiques sur Hadam', saleOnHadam: 'Vendre sur Hadam',
     saleOnHadamBlurb: 'Vous cherchez autre chose ? Parcourez toutes les boutiques du Marketplace partagé de Hadam.',
     logIn: 'Connexion', createAccount: 'Créer un compte', email: 'E-mail', password: 'Mot de passe', name: 'Nom',
@@ -2208,15 +2217,49 @@ async function renderSell() {
 /* ---------------- orders (client) ---------------- */
 async function renderOrders() {
   const el = document.getElementById('ordersContent');
-  const { orders } = await api('/api/orders/mine');
-  state._myOrdersCache = orders;
+  if (!state._ordersSubTab) state._ordersSubTab = 'orders';
   el.innerHTML = `
     <h2 class="section-title">${t('myOrdersTitle')}</h2>
-    ${orders.length === 0 ? `<div class="empty">${t('noOrdersYet')}</div>` : `<div class="field" style="max-width:320px;margin-bottom:14px;">
+    <div class="admin-tabs" style="margin-bottom:14px;">
+      <button class="admin-tab ${state._ordersSubTab === 'orders' ? 'active' : ''}" onclick="setOrdersSubTab('orders')">${t('myOrdersTab')}</button>
+      <button class="admin-tab ${state._ordersSubTab === 'messages' ? 'active' : ''}" onclick="setOrdersSubTab('messages')">${t('myMessagesTab')}</button>
+    </div>
+    <div id="ordersSubTabBody"></div>`;
+  if (state._ordersSubTab === 'orders') await renderOrdersSubTab(); else await renderMyMessagesTab();
+}
+function setOrdersSubTab(tab) { state._ordersSubTab = tab; renderOrders(); }
+async function renderOrdersSubTab() {
+  const body = document.getElementById('ordersSubTabBody');
+  const { orders } = await api('/api/orders/mine');
+  state._myOrdersCache = orders;
+  body.innerHTML = orders.length === 0 ? `<div class="empty">${t('noOrdersYet')}</div>` : `<div class="field" style="max-width:320px;margin-bottom:14px;">
       <input id="myOrdersSearch" type="text" placeholder="${t('searchMyOrdersPlaceholder') || 'Search by order ID or product code'}" oninput="filterMyOrders(this.value)">
     </div>
-    <div id="myOrdersListWrap"></div>`}`;
+    <div id="myOrdersListWrap"></div>`;
   if (orders.length > 0) renderMyOrdersList(orders);
+}
+/** Client-facing "My Messages" — read-only: shows their own submitted support
+ * messages, grouped Open vs Resolved, with the full thread (their original
+ * message plus staff's reply, if any). Clients don't reply from here — a
+ * new question is a new message via the storefront's Contact Us form; the
+ * backend has no client-side "add to thread" endpoint, only staff can reply. */
+async function renderMyMessagesTab() {
+  const body = document.getElementById('ordersSubTabBody');
+  const { messages } = await api('/api/support/messages/mine');
+  const open = messages.filter(m => m.status !== 'resolved');
+  const resolved = messages.filter(m => m.status === 'resolved');
+  const threadHtml = (m) => `
+    <div class="order-card">
+      <div class="oh"><span>${esc(m.subject)} · ${localeDate(new Date(m.createdAt))}</span><span class="status-pill ${m.status}">${m.status === 'resolved' ? t('resolvedMessagesLabel') : t('openMessagesLabel')}</span></div>
+      <div class="order-item" style="display:block;"><strong>${t('yourMessageLabel')}:</strong><div style="margin-top:4px;">${esc(m.message)}</div></div>
+      ${m.reply ? `<div class="order-item" style="display:block;border-top:1px solid var(--border);margin-top:8px;padding-top:8px;"><strong>${t('staffReplyLabel')}${m.repliedAt ? ' · ' + localeDate(new Date(m.repliedAt)) : ''}:</strong><div style="margin-top:4px;">${esc(m.reply)}</div></div>`
+        : `<div class="hint" style="margin-top:8px;">${t('awaitingReplyLabel')}</div>`}
+    </div>`;
+  body.innerHTML = messages.length === 0 ? `<div class="empty">${t('noMessagesYet')}</div>` : `
+    <h3 style="margin:0 0 8px;">${t('openMessagesLabel')}</h3>
+    ${open.length === 0 ? `<div class="hint" style="margin-bottom:16px;">${t('noMessagesYet')}</div>` : open.map(threadHtml).join('')}
+    <h3 style="margin:20px 0 8px;">${t('resolvedMessagesLabel')}</h3>
+    ${resolved.length === 0 ? `<div class="hint">${t('noMessagesYet')}</div>` : resolved.map(threadHtml).join('')}`;
 }
 function renderMyOrdersList(orders) {
   const wrap = document.getElementById('myOrdersListWrap');
@@ -2513,7 +2556,7 @@ async function renderAdmin() {
   el.innerHTML = `<h2 class="section-title">${t('dashboard')}</h2>
     ${bannerHtml}
     <div class="admin-tabs">
-      ${['stats','reports','products','digitalProducts','categories','employees','orders','security','settings'].map(tabKey=>`<button class="admin-tab ${state.adminTab===tabKey?'active':''}" onclick="setAdminTab('${tabKey}')">${tabKey==='settings' ? t('storeSettingsTab') : tabKey==='reports' ? t('reportsTab') : tabKey==='digitalProducts' ? t('digitalProductsTab') : tabKey==='security' ? t('securityAccessTab') : t(tabKey)}</button>`).join('')}
+      ${['stats','reports','products','digitalProducts','categories','employees','orders','support','security','settings'].map(tabKey=>`<button class="admin-tab ${state.adminTab===tabKey?'active':''}" onclick="setAdminTab('${tabKey}')">${tabKey==='settings' ? t('storeSettingsTab') : tabKey==='reports' ? t('reportsTab') : tabKey==='digitalProducts' ? t('digitalProductsTab') : tabKey==='security' ? t('securityAccessTab') : tabKey==='support' ? t('supportTab') : t(tabKey)}</button>`).join('')}
     </div>
     <div id="adminTabBody"></div>`;
   renderAdminTab();
@@ -2646,6 +2689,8 @@ async function renderAdminTab() {
       </div>
       <div id="adminOrdersTableWrap"></div>`;
     renderAdminOrdersTable(orders);
+  } else if (state.adminTab === 'support') {
+    await renderSupportMessagesTab(body);
   } else if (state.adminTab === 'reports') {
     if (!state._reportRange) {
       const to = Date.now();
@@ -3609,6 +3654,53 @@ function filterAdminOrders(query) {
     o.items.some(i => i.sku && i.sku.toLowerCase().includes(q))
   );
   renderAdminOrdersTable(filtered);
+}
+/** Admin/employee "Support Messages" tab — built on the existing, already-
+ * reviewed GET /api/employee/support and PATCH /api/employee/support/:id
+ * routes; no new backend endpoints were added for this view. */
+async function renderSupportMessagesTab(body) {
+  const { messages } = await api('/api/employee/support');
+  state._supportMessages = messages;
+  body.innerHTML = `<div id="supportMessagesWrap"></div>`;
+  renderSupportMessagesList(messages);
+}
+function renderSupportMessagesList(messages) {
+  const wrap = document.getElementById('supportMessagesWrap');
+  if (!wrap) return;
+  wrap.innerHTML = messages.length === 0 ? `<div class="empty">${t('noSupportMessagesYet')}</div>` : messages.map(m => `
+    <div class="order-card">
+      <div class="oh"><span>${esc(m.clientName)} (${esc(m.clientEmail)}) · ${localeDate(new Date(m.createdAt))}</span><span class="status-pill ${m.status}">${m.status === 'resolved' ? t('resolvedMessagesLabel') : t('openMessagesLabel')}</span></div>
+      <div class="order-item" style="display:block;"><strong>${esc(m.subject)}</strong><div style="margin-top:4px;">${esc(m.message)}</div></div>
+      ${m.reply ? `<div class="order-item" style="display:block;border-top:1px solid var(--border);margin-top:8px;padding-top:8px;"><strong>${t('staffReplyLabel')}${m.repliedBy ? ' — ' + esc(m.repliedBy) : ''}${m.repliedAt ? ' · ' + localeDate(new Date(m.repliedAt)) : ''}:</strong><div style="margin-top:4px;">${esc(m.reply)}</div></div>` : ''}
+      <div style="margin-top:10px;">
+        <textarea id="supportReply-${m.id}" rows="2" placeholder="${t('replyBoxPlaceholder')}" style="width:100%;"></textarea>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn sm" onclick="submitSupportReply('${m.id}')">${t('sendReplyBtn')}</button>
+          ${m.status === 'resolved'
+            ? `<button class="btn sm ghost" onclick="toggleSupportMessageStatus('${m.id}','open')">${t('reopenBtn')}</button>`
+            : `<button class="btn sm secondary" onclick="toggleSupportMessageStatus('${m.id}','resolved')">${t('markResolvedBtn')}</button>`}
+        </div>
+      </div>
+    </div>`).join('');
+}
+async function submitSupportReply(id) {
+  const textarea = document.getElementById(`supportReply-${id}`);
+  const reply = textarea.value.trim();
+  if (!reply) return;
+  try {
+    await api(`/api/employee/support/${id}`, { method: 'PATCH', body: JSON.stringify({ reply }) });
+    const { messages } = await api('/api/employee/support');
+    state._supportMessages = messages;
+    renderSupportMessagesList(messages);
+  } catch (e) { alert(e.message); }
+}
+async function toggleSupportMessageStatus(id, status) {
+  try {
+    await api(`/api/employee/support/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+    const { messages } = await api('/api/employee/support');
+    state._supportMessages = messages;
+    renderSupportMessagesList(messages);
+  } catch (e) { alert(e.message); }
 }
 function openCategoryForm(id) {
   const c = id ? state.categories.find(x => x.id === id) : null;

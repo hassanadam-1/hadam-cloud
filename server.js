@@ -4756,8 +4756,18 @@ route('GET', '/api/support/messages/mine', { hostScope: 'tenant', auth: true }, 
 
 route('GET', '/api/employee/support', { hostScope: 'tenant', auth: true, roles: ['employee', 'admin'] }, async (req, res, params, body, query, user, tenant) => {
   if (AUTH_DRIVER === 'supabase') {
-    const client = supabaseForRequest(bearerToken(req));
-    const { data, error } = await client.from('support_messages').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false });
+    // Uses the admin/service-role connection, not the caller's own restricted
+    // client — access here is already authorized by this route's own
+    // roles: ['employee','admin'] check, and shouldn't also be silently
+    // filtered by RLS policies written for the customer-facing
+    // /api/support/messages/mine route (which correctly restricts a
+    // customer to only their own messages). Using the caller's own client
+    // here would mean staff quietly see an incomplete or empty list instead
+    // of every message for their store — the same class of bug already
+    // found and fixed in the meeting-link-notify lookup and the employee
+    // order-item PATCH endpoint.
+    const admin = supabaseAdmin();
+    const { data, error } = await admin.from('support_messages').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false });
     if (error) return send(res, 500, { error: error.message });
     const messages = [];
     for (const row of data) {
@@ -4775,16 +4785,40 @@ route('GET', '/api/employee/support', { hostScope: 'tenant', auth: true, roles: 
   send(res, 200, { messages: db.messages.filter(m => m.tenantId === tenant.id).sort((a, b) => b.createdAt - a.createdAt) });
 });
 
+/** Notifies the client by email when staff reply to their support message — inline,
+ * self-contained i18n (not lib/email.js's EMAIL_I18N) since this is a standalone
+ * notification. Deliberately includes ONLY this client's own subject/message/reply —
+ * never staff identity, other customers' messages, or any other tenant's data. */
+async function notifyClientOfSupportReply(tenant, { clientEmail, clientLang, subject, reply }) {
+  if (!clientEmail) return;
+  const lang = clientLang || 'en';
+  const T = {
+    en: { subject: (s) => `Re: ${s}`, body: (s, r, t) => `${t} has replied to your message "${s}":\n\n${r}\n\nSign in to view the full conversation and reply.` },
+    ar: { subject: (s) => `رد: ${s}`, body: (s, r, t) => `رد ${t} على رسالتك "${s}":\n\n${r}\n\nسجّل الدخول لعرض المحادثة كاملة والرد.` },
+    fr: { subject: (s) => `Re : ${s}`, body: (s, r, t) => `${t} a répondu à votre message « ${s} » :\n\n${r}\n\nConnectez-vous pour voir la conversation complète et répondre.` },
+  };
+  const pack = T[lang] || T.en;
+  const emailSubject = pack.subject(subject);
+  const text = pack.body(subject, reply, tenant.name);
+  try {
+    await sendRealEmail({ to: clientEmail, subject: emailSubject, text, html: wrapEmailHtml(text, lang) });
+  } catch (e) { console.error('[support-reply-notify] failed:', e.message); }
+}
+
 route('PATCH', '/api/employee/support/:id', { hostScope: 'tenant', auth: true, roles: ['employee', 'admin'] }, async (req, res, params, body, query, user, tenant) => {
   if (AUTH_DRIVER === 'supabase') {
-    const client = supabaseForRequest(bearerToken(req));
-    const { data: existing, error: findErr } = await client.from('support_messages').select('client_id').eq('id', params.id).eq('tenant_id', tenant.id).maybeSingle();
+    // Same fix as the GET route above, for the same reason: this is a
+    // staff-only write already authorized by roles: ['employee','admin'],
+    // and must not be additionally (and silently) blocked by RLS policies
+    // meant for the customer-facing message routes.
+    const admin = supabaseAdmin();
+    const { data: existing, error: findErr } = await admin.from('support_messages').select('client_id').eq('id', params.id).eq('tenant_id', tenant.id).maybeSingle();
     if (findErr) return send(res, 500, { error: findErr.message });
     if (!existing) return send(res, 404, { error: apiT('messageNotFound', reqLang(req)) });
     const patch = {};
     if (typeof body.reply === 'string') { patch.reply = body.reply.slice(0, 2000); patch.replied_by = user.name; patch.replied_at = new Date().toISOString(); }
     if (body.status && ['open', 'resolved'].includes(body.status)) patch.status = body.status;
-    const { data: updated, error: updErr } = await client.from('support_messages').update(patch).eq('id', params.id).select().maybeSingle();
+    const { data: updated, error: updErr } = await admin.from('support_messages').update(patch).eq('id', params.id).select().maybeSingle();
     if (updErr) return send(res, 400, { error: updErr.message });
     if (!updated) return send(res, 404, { error: apiT('messageNotFound', reqLang(req)) });
     let clientName = updated.client_id, clientEmail = '';
@@ -4794,6 +4828,10 @@ route('PATCH', '/api/employee/support/:id', { hostScope: 'tenant', auth: true, r
       clientName = authUser.user.user_metadata?.full_name || authUser.user.email;
       clientEmail = authUser.user.email;
     } catch { /* fall back to defaults above if the lookup fails */ }
+    if (typeof body.reply === 'string' && body.reply.trim()) {
+      const clientLang = await getRecipientLang(clientEmail);
+      notifyClientOfSupportReply(tenant, { clientEmail, clientLang, subject: updated.subject, reply: patch.reply });
+    }
     return send(res, 200, { message: supportMsgRowToMsg(updated, clientName, clientEmail) });
   }
   const msg = db.messages.find(m => m.id === params.id && m.tenantId === tenant.id);
@@ -4801,6 +4839,10 @@ route('PATCH', '/api/employee/support/:id', { hostScope: 'tenant', auth: true, r
   if (typeof body.reply === 'string') { msg.reply = body.reply.slice(0, 2000); msg.repliedBy = user.name; msg.repliedAt = Date.now(); }
   if (body.status && ['open', 'resolved'].includes(body.status)) msg.status = body.status;
   await persist();
+  if (typeof body.reply === 'string' && body.reply.trim()) {
+    const clientLang = await getRecipientLang(msg.clientEmail);
+    notifyClientOfSupportReply(tenant, { clientEmail: msg.clientEmail, clientLang, subject: msg.subject, reply: msg.reply });
+  }
   send(res, 200, { message: msg });
 });
 
