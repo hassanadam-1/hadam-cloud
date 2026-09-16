@@ -464,6 +464,7 @@ const API_I18N = {
     notImplementedSupabaseReset: 'This isn\'t available with the Supabase auth driver — password reset should be completed through the app directly.',
     notAvailableOnStoreSubdomain: 'Not available on a store subdomain.',
     noAccountForEmail: 'No account found with that email.',
+    cannotResetOwnMfa: "You can't reset your own MFA this way — ask another superadmin to reset it for you. This is intentional: it prevents a lost authenticator from becoming a password-only account takeover.",
     newPasswordMin6: 'New password must be at least 6 characters.',
     nameEmailPasswordRequired: 'Name, email, and password are required.',
     nameEmailMessageRequired: 'Name, email, and a message are required.',
@@ -610,6 +611,7 @@ const API_I18N = {
     notImplementedSupabaseReset: 'هذا غير متاح مع محرك مصادقة Supabase — يجب إكمال إعادة تعيين كلمة المرور من خلال التطبيق مباشرة.',
     notAvailableOnStoreSubdomain: 'غير متاح على نطاق فرعي لمتجر.',
     noAccountForEmail: 'لا يوجد حساب بهذا البريد الإلكتروني.',
+    cannotResetOwnMfa: 'لا يمكنك إعادة تعيين التحقق بخطوتين الخاص بك بهذه الطريقة — اطلب من مسؤول أعلى آخر إعادة تعيينه لك. هذا مقصود: فهو يمنع تحول فقدان جهاز المصادقة إلى استيلاء على الحساب بكلمة المرور فقط.',
     newPasswordMin6: 'يجب أن تتكون كلمة المرور الجديدة من 6 أحرف على الأقل.',
     nameEmailPasswordRequired: 'الاسم والبريد الإلكتروني وكلمة المرور مطلوبة.',
     nameEmailMessageRequired: 'الاسم والبريد الإلكتروني والرسالة مطلوبة.',
@@ -756,6 +758,7 @@ const API_I18N = {
     notImplementedSupabaseReset: "Ceci n'est pas disponible avec le pilote d'authentification Supabase — la réinitialisation du mot de passe doit être effectuée directement via l'application.",
     notAvailableOnStoreSubdomain: 'Non disponible sur un sous-domaine de boutique.',
     noAccountForEmail: 'Aucun compte trouvé avec cet e-mail.',
+    cannotResetOwnMfa: "Vous ne pouvez pas réinitialiser votre propre MFA de cette façon — demandez à un autre superadmin de le faire pour vous. C'est intentionnel : cela évite qu'un authentificateur perdu ne devienne une prise de contrôle du compte par simple mot de passe.",
     newPasswordMin6: 'Le nouveau mot de passe doit comporter au moins 6 caractères.',
     nameEmailPasswordRequired: "Le nom, l'e-mail et le mot de passe sont requis.",
     nameEmailMessageRequired: "Le nom, l'e-mail et un message sont requis.",
@@ -5672,6 +5675,12 @@ route('POST', '/api/platform/users/reset-mfa-by-email', { hostScope: 'platform',
   if (error) return send(res, 500, { error: error.message });
   const targetUser = (data.users || []).find(u => u.email && u.email.toLowerCase() === email.toLowerCase());
   if (!targetUser) return send(res, 404, { error: apiT('noAccountForEmail', reqLang(req)) });
+  // A superadmin must never be able to reset their own MFA this way — that
+  // would turn "I lost my authenticator" into a plain password-only account
+  // takeover path, exactly the self-service bypass this recovery design
+  // deliberately avoids. Recovery for a superadmin must always come from a
+  // second, independent superadmin account.
+  if (targetUser.id === user.id) return send(res, 403, { error: apiT('cannotResetOwnMfa', reqLang(req)) });
   try {
     await authSupabase.adminResetAllMfaForUser(targetUser.id);
     logAuthEvent({ userId: targetUser.id, email: targetUser.email, eventType: 'admin_mfa_reset', req, details: { actingAdminId: user.id, actingAdminEmail: user.email, scope: 'superadmin_by_email' } });
@@ -5681,6 +5690,9 @@ route('POST', '/api/platform/users/reset-mfa-by-email', { hostScope: 'platform',
 
 route('POST', '/api/platform/users/:id/reset-mfa', { hostScope: 'platform', auth: true, roles: ['superadmin'] }, async (req, res, params, body, query, user) => {
   if (AUTH_DRIVER !== 'supabase') return send(res, 501, { error: apiT('mfaSupabaseOnly', reqLang(req)) });
+  // Same self-reset guard as the by-email route above — never let a
+  // superadmin reset their own MFA through either endpoint.
+  if (params.id === user.id) return send(res, 403, { error: apiT('cannotResetOwnMfa', reqLang(req)) });
   try {
     await authSupabase.adminResetAllMfaForUser(params.id);
     logAuthEvent({ userId: params.id, eventType: 'admin_mfa_reset', req, details: { actingAdminId: user.id, actingAdminEmail: user.email, scope: 'superadmin_by_id' } });
