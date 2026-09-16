@@ -5671,9 +5671,17 @@ route('POST', '/api/platform/users/reset-mfa-by-email', { hostScope: 'platform',
   const { email } = body;
   if (!email) return send(res, 400, { error: apiT('emailRequired', reqLang(req)) });
   const admin = supabaseAdmin();
-  const { data, error } = await admin.auth.admin.listUsers();
-  if (error) return send(res, 500, { error: error.message });
-  const targetUser = (data.users || []).find(u => u.email && u.email.toLowerCase() === email.toLowerCase());
+  // listUsers() is paginated (50 per page by default) and this project has
+  // 265+ users, so a single unpaginated call could silently miss the target
+  // account and report "no account found" even though it genuinely exists —
+  // exactly what happened here. Page through until found or exhausted.
+  let targetUser = null;
+  for (let page = 1; page <= 50 && !targetUser; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) return send(res, 500, { error: error.message });
+    targetUser = (data.users || []).find(u => u.email && u.email.toLowerCase() === email.toLowerCase());
+    if (!data.users || data.users.length < 1000) break; // last page reached
+  }
   if (!targetUser) return send(res, 404, { error: apiT('noAccountForEmail', reqLang(req)) });
   // A superadmin must never be able to reset their own MFA this way — that
   // would turn "I lost my authenticator" into a plain password-only account
