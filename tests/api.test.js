@@ -1956,7 +1956,6 @@ module.exports = async function runApiTests(port) {
       // Temporary diagnostic: if this still isn't 200, print the actual
       // error the route returned so the real cause is visible in the CI
       // log instead of just the status-code mismatch.
-      if (withCardStatus !== 200) console.log('[DEBUG payGate withCardBody]', JSON.stringify(withCardBody));
       assert.strictEqual(withCardStatus, 200);
     });
 
