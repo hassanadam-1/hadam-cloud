@@ -1945,13 +1945,18 @@ module.exports = async function runApiTests(port) {
       // (a separate, later rule — see the route's own comment) so this
       // second call genuinely isolates the payment-gate behavior under
       // test, rather than being rejected by the unrelated eligibility gate.
-      const { getDb } = require('../server');
-      const dbRef = getDb();
-      const payGateTenant = dbRef.tenants.find(t => t.subdomain === payGateSub);
-      payGateTenant.subscriptionExpiresAt = Date.now() + 3 * 24 * 60 * 60 * 1000;
+      // Uses the same test-only expiry backdoor the tests above rely on
+      // (PATCH /api/test-only/tenants/:id/expiry) instead of reaching into
+      // process state directly, since that's the proven mechanism already
+      // used elsewhere in this suite.
+      await call('localhost', `/api/test-only/tenants/${tenant.tenant.id}/expiry`, { method: 'PATCH', body: JSON.stringify({ subscriptionExpiresAt: Date.now() + 3 * 24 * 60 * 60 * 1000, resetAlertLevel: true }) });
 
       // With a valid card, the same plain-plan renewal succeeds.
-      const { status: withCardStatus } = await call(`${payGateSub}.localhost`, '/api/admin/store/renew', { method: 'POST', headers: { Authorization: `Bearer ${payGateToken}` }, body: JSON.stringify({ plan: 'store', card: { number: '4111111111111111', expiry: '12/30', cvv: '123', holderName: 'Test Holder' } }) });
+      const { status: withCardStatus, body: withCardBody } = await call(`${payGateSub}.localhost`, '/api/admin/store/renew', { method: 'POST', headers: { Authorization: `Bearer ${payGateToken}` }, body: JSON.stringify({ plan: 'store', card: { number: '4111111111111111', expiry: '12/30', cvv: '123', holderName: 'Test Holder' } }) });
+      // Temporary diagnostic: if this still isn't 200, print the actual
+      // error the route returned so the real cause is visible in the CI
+      // log instead of just the status-code mismatch.
+      if (withCardStatus !== 200) console.log('[DEBUG payGate withCardBody]', JSON.stringify(withCardBody));
       assert.strictEqual(withCardStatus, 200);
     });
 
