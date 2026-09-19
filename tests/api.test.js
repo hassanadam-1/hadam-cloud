@@ -1941,6 +1941,15 @@ module.exports = async function runApiTests(port) {
       const { body: infoAfterBlockedAttempt } = await call(`${payGateSub}.localhost`, '/api/tenant/info');
       assert.strictEqual(infoAfterBlockedAttempt.subscriptionTier, 'professional'); // unchanged — no silent free renewal happened
 
+      // Move this test tenant inside its 7-day renewal-eligibility window
+      // (a separate, later rule — see the route's own comment) so this
+      // second call genuinely isolates the payment-gate behavior under
+      // test, rather than being rejected by the unrelated eligibility gate.
+      const { getDb } = require('../server');
+      const dbRef = getDb();
+      const payGateTenant = dbRef.tenants.find(t => t.subdomain === payGateSub);
+      payGateTenant.subscriptionExpiresAt = Date.now() + 3 * 24 * 60 * 60 * 1000;
+
       // With a valid card, the same plain-plan renewal succeeds.
       const { status: withCardStatus } = await call(`${payGateSub}.localhost`, '/api/admin/store/renew', { method: 'POST', headers: { Authorization: `Bearer ${payGateToken}` }, body: JSON.stringify({ plan: 'store', card: { number: '4111111111111111', expiry: '12/30', cvv: '123', holderName: 'Test Holder' } }) });
       assert.strictEqual(withCardStatus, 200);
