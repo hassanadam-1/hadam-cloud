@@ -1620,11 +1620,12 @@ async function submitSuperRecoveryMfaCode(factorId) {
   applyStaticTranslations();
   await initSuperRecoveryFlow();
   if (state.token) {
-    try { const { user } = await api('/api/auth/me'); state.user = user; document.getElementById('authBtn').textContent = t('logout'); document.getElementById('dashboardNavLink').style.display = 'inline'; go('super'); }
+    try { const { user } = await api('/api/auth/me'); state.user = user; document.getElementById('authBtn').textContent = t('logout'); document.getElementById('authBtn').style.display = ''; document.getElementById('dashboardNavLink').style.display = 'inline'; go('super'); }
     catch { state.token = null; localStorage.removeItem('hadam_super_token'); }
   }
   const hashView = (window.location.hash || '').replace('#', '');
   if (['home', 'marketplace', 'sell', 'contact'].includes(hashView)) go(hashView);
+  if (hashView === 'superadmin-login') onAuthBtn();
   const planParam = new URLSearchParams(window.location.search).get('plan');
   if (['store', 'marketplace', 'both'].includes(planParam)) document.getElementById('cPlan').value = planParam;
   wireCardFieldValidation('rn');
