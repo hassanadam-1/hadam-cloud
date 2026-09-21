@@ -1945,6 +1945,36 @@ route('PATCH', '/api/platform/tenants/:id', { hostScope: 'platform', auth: true,
   send(res, 200, { tenant });
 });
 
+/**
+ * Superadmin-only permanent store removal. Distinct from the store owner's own
+ * DELETE /api/admin/store (password-confirmed self-delete) — this is for the
+ * platform operator to remove ANY store, confirmed by re-typing its exact name
+ * instead of a password the superadmin doesn't have. Soft-deletes the tenant;
+ * the existing unknownStore check already treats 'deleted' the same as
+ * 'suspended' — the store becomes fully unreachable for its own clients/staff.
+ */
+route('DELETE', '/api/platform/tenants/:id', { hostScope: 'platform', auth: true, roles: ['superadmin'] }, async (req, res, params, body, query, user) => {
+  const confirmName = ((body && body.confirmName) || '').trim();
+  if (AUTH_DRIVER === 'supabase') {
+    const { data: row } = await supabaseAdmin().from('tenants').select('*').eq('id', params.id).maybeSingle();
+    if (!row) return send(res, 404, { error: apiT('tenantNotFound', reqLang(req)) });
+    if (confirmName !== row.name) return send(res, 400, { error: 'Store name confirmation did not match — nothing was deleted.' });
+    const { data: updated, error } = await supabaseAdmin().from('tenants').update({ status: 'deleted', deleted_at: Date.now(), deleted_by: user.name }).eq('id', params.id).select().maybeSingle();
+    if (error) return send(res, 400, { error: error.message });
+    logAuthEvent({ userId: user.id, email: user.email, eventType: 'superadmin_tenant_deleted', req, details: { tenantId: params.id, tenantName: row.name } });
+    return send(res, 200, { tenant: rowToTenant(updated) });
+  }
+  const tenant = db.tenants.find(t => t.id === params.id);
+  if (!tenant) return send(res, 404, { error: apiT('tenantNotFound', reqLang(req)) });
+  if (confirmName !== tenant.name) return send(res, 400, { error: 'Store name confirmation did not match — nothing was deleted.' });
+  tenant.status = 'deleted';
+  tenant.deletedAt = Date.now();
+  tenant.deletedBy = user.name;
+  await persist();
+  logAuthEvent({ userId: user.id, email: user.email, eventType: 'superadmin_tenant_deleted', req, details: { tenantId: tenant.id, tenantName: tenant.name } });
+  send(res, 200, { tenant });
+});
+
 /* =========================================================
    AUTH ROUTES — tenant-scoped for regular users, platform-scoped
    for the superadmin. hostScope 'any' so one route handles both,

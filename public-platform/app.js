@@ -1154,12 +1154,13 @@ async function renderSuper() {
   const { tenants, baseDomain } = await api('/api/platform/tenants');
   state.baseDomain = baseDomain;
   el.innerHTML = `<h2 class="section-title">${t('allTenants')}${helpIcon('tenantMgmt', { what: 'helpTenantMgmtWhat', why: 'helpTenantMgmtWhy', next: 'helpTenantMgmtNext', errors: 'helpTenantMgmtErrors' })}</h2>
-    <table><thead><tr><th>${t('store')}</th><th>${t('plan')}</th><th>${t('subdomainLabel')}</th><th>${t('revenue')}</th><th>${t('products')}</th><th>${t('orders')}</th><th>${t('users')}</th><th>${t('status')}</th><th></th></tr></thead><tbody>
+    <table><thead><tr><th>${t('store')}</th><th>${t('plan')}</th><th>${t('subdomainLabel')}</th><th>${t('revenue')}</th><th>${t('products')}</th><th>${t('orders')}</th><th>${t('users')}</th><th>${t('status')}</th><th></th><th></th></tr></thead><tbody>
     ${tenants.map(tenant => `<tr>
       <td>${esc(tenant.name)}</td><td>${planLabel(tenant.plan)}</td><td><span style="font-family:var(--font-mono)">${esc(tenant.subdomain)}.${baseDomain}</span></td>
       <td>$${tenant.revenue.toFixed(2)}</td><td>${tenant.productCount}</td><td>${tenant.orderCount}</td><td>${tenant.userCount}</td>
       <td><span class="status-pill ${tenant.status === 'active' ? 'success' : 'failed'}">${tenant.status}</span></td>
       <td><button class="btn ghost sm" onclick="toggleTenant('${tenant.id}','${tenant.status}')">${tenant.status === 'active' ? t('suspend') : t('activate')}</button></td>
+      <td><button class="btn ghost sm" style="color:#e5484d;" onclick="deleteTenant('${tenant.id}', decodeURIComponent('${encodeURIComponent(tenant.name)}'))"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-inline-end:4px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>${t('deleteTenantBtn') || 'Delete'}</button></td>
     </tr>`).join('')}</tbody></table>
     <h2 class="section-title" style="margin-top:32px;">${t('contactMessagesTitle') || 'Contact form messages'}${helpIcon('superContactMessages', { what: 'helpSuperContactWhat', why: 'helpSuperContactWhy', next: 'helpSuperContactNext' })}</h2>
     <p class="hint" style="max-width:640px;">${t('contactMessagesHint') || 'Messages submitted through the public Contact form.'}</p>
@@ -1432,6 +1433,15 @@ async function reviewMarketplaceMember(id, action) {
 async function toggleTenant(id, currentStatus) {
   await api(`/api/platform/tenants/${id}`, { method: 'PATCH', body: JSON.stringify({ status: currentStatus === 'active' ? 'suspended' : 'active' }) });
   renderSuper();
+}
+async function deleteTenant(id, name) {
+  var typed = prompt('Type "' + name + '" to permanently delete this store. This cannot be undone from here \u2014 the store, its data, and its staff/client access will all stop working immediately.');
+  if (typed === null) return; // cancelled
+  if (typed.trim() !== name) { alert('Store name did not match \u2014 nothing was deleted.'); return; }
+  try {
+    await api('/api/platform/tenants/' + id, { method: 'DELETE', body: JSON.stringify({ confirmName: typed.trim() }) });
+    renderSuper();
+  } catch (e) { alert(e.message); }
 }
 
 async function initSuperRecoveryFlow() {
