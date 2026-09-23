@@ -66,3 +66,4 @@ stripetoken.txt
 token.txt
 forced-failure-test.js
 passcodes/
+my-supabase-keys.sh
