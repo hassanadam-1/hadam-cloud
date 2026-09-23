@@ -1959,7 +1959,7 @@ route('DELETE', '/api/platform/tenants/:id', { hostScope: 'platform', auth: true
     const { data: row } = await supabaseAdmin().from('tenants').select('*').eq('id', params.id).maybeSingle();
     if (!row) return send(res, 404, { error: apiT('tenantNotFound', reqLang(req)) });
     if (confirmName !== row.name) return send(res, 400, { error: 'Store name confirmation did not match — nothing was deleted.' });
-    const { data: updated, error } = await supabaseAdmin().from('tenants').update({ status: 'deleted', deleted_at: Date.now(), deleted_by: user.name }).eq('id', params.id).select().maybeSingle();
+    const { data: updated, error } = await supabaseAdmin().from('tenants').update({ status: 'deleted', deleted_at: new Date().toISOString(), deleted_by: user.name }).eq('id', params.id).select().maybeSingle();
     if (error) return send(res, 400, { error: error.message });
     logAuthEvent({ userId: user.id, email: user.email, eventType: 'superadmin_tenant_deleted', req, details: { tenantId: params.id, tenantName: row.name } });
     return send(res, 200, { tenant: rowToTenant(updated) });
