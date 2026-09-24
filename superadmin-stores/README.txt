@@ -9,7 +9,7 @@ Page:  https://hadamplatform.com/superadmin/stores
 INSTALL (Git Bash)
 1) Unzip so the folder sits next to server.js:
      cd ~/Desktop/hadam-v3
-     unzip -o /c/Users/LENOVO/Downloads/superadmin-stores-v3.zip -d .
+     unzip -o /c/Users/LENOVO/Downloads/superadmin-stores-v4.zip -d .
      ls superadmin-stores        -> router.cjs  page.html  page.js  README.txt
 
 2) Hook it into server.js (plain Node http server). Two lines, added by this command:

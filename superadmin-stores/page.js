@@ -32,9 +32,24 @@
     return body;
   }
 
+  function clearLoginForm() {
+    ['email', 'password', 'code'].forEach(function (id) { var el = $(id); if (el) { el.value = ''; el.setAttribute('readonly', 'readonly'); } });
+    $('loginMsg').textContent = ''; $('mfaMsg').textContent = '';
+    // Browsers autofill a little after the page shows — wipe again shortly after.
+    setTimeout(function () { ['email', 'password'].forEach(function (id) { $(id).value = ''; }); }, 150);
+    setTimeout(function () { ['email', 'password'].forEach(function (id) { $(id).value = ''; }); }, 600);
+  }
+  async function signOutHere() {
+    try { sessionStorage.removeItem('saVerifyPass'); } catch (_) {}
+    try { await sb.auth.signOut({ scope: 'local' }); } catch (_) {}
+    state.tenants = [];
+    $('rows').innerHTML = ''; $('tiles').innerHTML = '';
+    clearLoginForm();
+  }
+
   async function route() {
     var s = await sb.auth.getSession();
-    if (!s.data.session) return show('login');
+    if (!s.data.session) { show('login'); clearLoginForm(); return; }
     await load();
   }
 
@@ -76,7 +91,7 @@
         try { sessionStorage.removeItem('saVerifyPass'); } catch (_) {}
         return sendEmailCode();
       } else if (e.code === 'not_signed_in' || e.code === 'invalid_session') {
-        await sb.auth.signOut(); return route();
+        await signOutHere(); return route();
       } else {
         $('rows').innerHTML = '<tr><td colspan="6" class="err">Could not load stores: ' + esc(e.message) + (e.detail ? ' — ' + esc(e.detail) : '') + '</td></tr>';
       }
@@ -160,11 +175,15 @@
   }
 
   function wire() {
+    ['email', 'password', 'code'].forEach(function (id) {
+      $(id).addEventListener('focus', function () { this.removeAttribute('readonly'); });
+    });
     $('loginForm').addEventListener('submit', async function (ev) {
       ev.preventDefault();
       $('loginMsg').textContent = '';
       var r = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('password').value });
-      if (r.error) { $('loginMsg').textContent = r.error.message; return; }
+      if (r.error) { $('loginMsg').textContent = r.error.message; $('password').value = ''; return; }
+      $('email').value = ''; $('password').value = '';
       route();
     });
     $('mfaForm').addEventListener('submit', async function (ev) {
@@ -185,7 +204,7 @@
       }
     });
     $('resend').addEventListener('click', sendEmailCode);
-    $('signout').addEventListener('click', async function () { try { sessionStorage.removeItem('saVerifyPass'); } catch (_) {} await sb.auth.signOut(); show('login'); });
+    $('signout').addEventListener('click', async function () { await signOutHere(); show('login'); });
     $('q').addEventListener('input', renderRows);
     $('fStatus').addEventListener('change', function () { state.tile = ''; render(); });
     $('fMarket').addEventListener('change', function () { state.tile = ''; render(); });
@@ -207,7 +226,9 @@
       var cfg = await (await fetch('/api/sa-stores/config')).json();
       if (!cfg.anonKey) throw new Error('SUPABASE_ANON_KEY is not set on the server');
       if (!window.supabase || !window.supabase.createClient) throw new Error('Supabase library did not load');
-      sb = window.supabase.createClient(cfg.url, cfg.anonKey);
+      sb = window.supabase.createClient(cfg.url, cfg.anonKey, {
+        auth: { storageKey: 'hadam-sa-stores-auth', storage: window.sessionStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+      });
       wire();
       await route();
     } catch (e) {

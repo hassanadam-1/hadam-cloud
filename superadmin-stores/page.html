@@ -50,7 +50,7 @@
 <body>
 <header>
   <h1><span class="dot"></span>Hadam — Stores (Superadmin)</h1>
-  <a href="/">Back to dashboard</a>
+  <a href="/" id="backLink">Back to dashboard</a>
   <button class="link hidden" id="signout">Sign out</button>
 </header>
 <main>
@@ -58,11 +58,11 @@
 
   <div id="login" class="card auth hidden">
     <h2>Superadmin sign in</h2>
-    <form id="loginForm">
+    <form id="loginForm" autocomplete="off">
       <label for="email">Email</label>
-      <input id="email" type="email" autocomplete="username" required>
+      <input id="email" name="sa-login-email" type="email" autocomplete="off" readonly required>
       <label for="password">Password</label>
-      <input id="password" type="password" autocomplete="current-password" required>
+      <input id="password" name="sa-login-pw" type="password" autocomplete="new-password" readonly required>
       <div style="margin-top:14px"><button class="primary" type="submit">Sign in</button></div>
     </form>
     <div id="loginMsg" class="msg err"></div>
