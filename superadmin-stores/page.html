@@ -69,12 +69,15 @@
   </div>
 
   <div id="mfa" class="card auth hidden">
-    <h2>Authenticator code</h2>
-    <p class="small">Enter the 6-digit code from your authenticator app.</p>
+    <h2>Email verification</h2>
+    <p class="small" id="mfaInfo">Sending a 6-digit code to your superadmin email…</p>
     <form id="mfaForm">
-      <label for="code">Code</label>
+      <label for="code">Code from email</label>
       <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
-      <div style="margin-top:14px"><button class="primary" type="submit">Verify</button></div>
+      <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="primary" type="submit">Verify</button>
+        <button class="link" type="button" id="resend" style="color:var(--navy);background:none;border:0;text-decoration:underline;cursor:pointer">Send a new code</button>
+      </div>
     </form>
     <div id="mfaMsg" class="msg err"></div>
   </div>

@@ -8,8 +8,8 @@
  * Features: stores overview (counts per status), find-a-store search,
  * stores with / without a marketplace listing, and Restore for deleted stores.
  *
- * Self-contained: does its own Supabase auth check (valid session + MFA (aal2)
- * + profiles.is_superadmin = true). Hook into server.js (plain http):
+ * Self-contained: does its own auth check (valid Supabase session + profiles.is_superadmin = true
+ * + a 6-digit code emailed to the superadmin via Resend). Hook into server.js (plain http):
  *     const saStores = require('./superadmin-stores/router.cjs');   // near the top
  *     if (await saStores(req, res)) return;   // first line inside http.createServer(async (req, res) => {
  */
@@ -45,27 +45,120 @@ function jwtPayload(token) {
   }
 }
 
+const crypto = require('crypto');
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@hadamplatform.com';
+const VERIFY_SECRET = process.env.SA_VERIFY_SECRET || SERVICE_KEY || crypto.randomBytes(32).toString('hex');
+const CODE_TTL_MS = 10 * 60 * 1000;      // email code valid 10 minutes
+const CODE_MAX_TRIES = 5;
+const RESEND_COOLDOWN_MS = 60 * 1000;
+const PASS_TTL_MS = 8 * 60 * 60 * 1000;   // verified for 8 hours
+const pendingCodes = new Map();           // userId -> { hash, exp, tries, sentAt }
+
+function sha(v) { return crypto.createHash('sha256').update(String(v)).digest('hex'); }
+function sign(v) { return crypto.createHmac('sha256', VERIFY_SECRET).update(v).digest('base64url'); }
+function makePass(userId) {
+  const exp = Date.now() + PASS_TTL_MS;
+  const body = userId + '.' + exp;
+  return { pass: Buffer.from(body).toString('base64url') + '.' + sign(body), exp };
+}
+function passValid(pass, userId) {
+  if (!pass || typeof pass !== 'string') return false;
+  const [b, sig] = pass.split('.');
+  if (!b || !sig) return false;
+  const body = Buffer.from(b, 'base64url').toString('utf8');
+  const expected = sign(body);
+  if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return false;
+  const [uid, exp] = body.split('.');
+  return uid === userId && Number(exp) > Date.now();
+}
+function maskEmail(e) {
+  const [u, d] = String(e || '').split('@');
+  return d ? u.slice(0, 2) + '***@' + d : '';
+}
+
+// Signed-in superadmin check WITHOUT the second step (used to send/verify the email code).
+async function authSuperadmin(req) {
+  const h = req.headers.authorization || '';
+  const token = h.startsWith('Bearer ') ? h.slice(7).trim() : '';
+  if (!token) return { code: 401, error: 'not_signed_in' };
+  const { data, error } = await admin().auth.getUser(token);
+  if (error || !data || !data.user) return { code: 401, error: 'invalid_session' };
+  const { data: prof, error: pErr } = await admin()
+    .from('profiles').select('is_superadmin').eq('id', data.user.id).maybeSingle();
+  if (pErr) return { code: 500, error: 'profile_lookup_failed', detail: pErr.message };
+  if (!prof || prof.is_superadmin !== true) return { code: 403, error: 'not_superadmin' };
+  return { user: data.user, token };
+}
+
+// Full check: superadmin + second step (email code pass, or an existing aal2 session).
 async function requireSuperadmin(req, res, next) {
   try {
-    const h = req.headers.authorization || '';
-    const token = h.startsWith('Bearer ') ? h.slice(7).trim() : '';
-    if (!token) return res.status(401).json({ error: 'not_signed_in' });
-
-    const { data, error } = await admin().auth.getUser(token);
-    if (error || !data || !data.user) return res.status(401).json({ error: 'invalid_session' });
-
-    if (jwtPayload(token).aal !== 'aal2') return res.status(403).json({ error: 'mfa_required' });
-
-    const { data: prof, error: pErr } = await admin()
-      .from('profiles').select('is_superadmin').eq('id', data.user.id).maybeSingle();
-    if (pErr) return res.status(500).json({ error: 'profile_lookup_failed', detail: pErr.message });
-    if (!prof || prof.is_superadmin !== true) return res.status(403).json({ error: 'not_superadmin' });
-
-    req.saUser = data.user;
+    const a = await authSuperadmin(req);
+    if (a.error) return res.status(a.code).json({ error: a.error, detail: a.detail });
+    const emailOk = passValid(req.headers['x-sa-verify'], a.user.id);
+    if (!emailOk && jwtPayload(a.token).aal !== 'aal2') return res.status(403).json({ error: 'verification_required' });
+    req.saUser = a.user;
     next();
   } catch (e) {
     res.status(500).json({ error: 'auth_check_failed', detail: e.message });
   }
+}
+
+async function sendCodeEmail(to, code) {
+  if (!RESEND_API_KEY) throw new Error('RESEND_API_KEY is not set on the server');
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: 'Hadam <' + FROM_EMAIL + '>',
+      to: [to],
+      subject: 'Your Hadam superadmin verification code: ' + code,
+      text: 'Your Hadam superadmin verification code is ' + code + '.\n\nIt expires in 10 minutes. If you did not try to sign in, change your password now.',
+      html: '<p>Your Hadam superadmin verification code is:</p><p style="font-size:28px;font-weight:bold;letter-spacing:4px">' + code +
+        '</p><p>It expires in 10 minutes. If you did not try to sign in, change your password now.</p>',
+    }),
+  });
+  if (!r.ok) throw new Error('Email service error ' + r.status + ': ' + (await r.text()).slice(0, 200));
+}
+
+function readJsonBody(req) {
+  return new Promise((resolve) => {
+    let raw = '';
+    req.on('data', (c) => { raw += c; if (raw.length > 10000) req.destroy(); });
+    req.on('end', () => { try { resolve(JSON.parse(raw || '{}')); } catch (_) { resolve({}); } });
+    req.on('error', () => resolve({}));
+  });
+}
+
+async function sendCode(req, res) {
+  const a = await authSuperadmin(req);
+  if (a.error) return sendJson(res, a.code, { error: a.error, detail: a.detail });
+  const prev = pendingCodes.get(a.user.id);
+  if (prev && Date.now() - prev.sentAt < RESEND_COOLDOWN_MS) {
+    return sendJson(res, 429, { error: 'wait_before_resend', seconds: Math.ceil((RESEND_COOLDOWN_MS - (Date.now() - prev.sentAt)) / 1000) });
+  }
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+  await sendCodeEmail(a.user.email, code);
+  pendingCodes.set(a.user.id, { hash: sha(a.user.id + ':' + code), exp: Date.now() + CODE_TTL_MS, tries: 0, sentAt: Date.now() });
+  console.log('[superadmin-stores] verification code emailed to ' + a.user.email);
+  sendJson(res, 200, { sent: true, to: maskEmail(a.user.email) });
+}
+
+async function verifyCode(req, res) {
+  const body = await readJsonBody(req);
+  const a = await authSuperadmin(req);
+  if (a.error) return sendJson(res, a.code, { error: a.error, detail: a.detail });
+  const p = pendingCodes.get(a.user.id);
+  if (!p || p.exp < Date.now()) { pendingCodes.delete(a.user.id); return sendJson(res, 400, { error: 'code_expired' }); }
+  p.tries += 1;
+  if (p.tries > CODE_MAX_TRIES) { pendingCodes.delete(a.user.id); return sendJson(res, 429, { error: 'too_many_attempts' }); }
+  const code = String(body.code || '').replace(/\D/g, '');
+  if (sha(a.user.id + ':' + code) !== p.hash) return sendJson(res, 400, { error: 'wrong_code', tries_left: CODE_MAX_TRIES - p.tries });
+  pendingCodes.delete(a.user.id);
+  const { pass, exp } = makePass(a.user.id);
+  console.log('[superadmin-stores] email code verified for ' + a.user.email);
+  sendJson(res, 200, { ok: true, pass, expires_at: exp });
 }
 
 // Fetch every row of a table (Supabase caps a single select at 1000 rows).
@@ -233,6 +326,8 @@ async function handle(req, res) {
       if (await checkSuperadmin(req, res)) await listTenants(req, res);
       return true;
     }
+    if (req.method === 'POST' && url === '/api/sa-stores/email-code/send') { await sendCode(req, res); return true; }
+    if (req.method === 'POST' && url === '/api/sa-stores/email-code/verify') { await verifyCode(req, res); return true; }
     const m = url.match(/^\/api\/sa-stores\/tenants\/([^/]+)\/restore$/);
     if (req.method === 'POST' && m) {
       if (await checkSuperadmin(req, res)) await restoreTenant(req, res, decodeURIComponent(m[1]));

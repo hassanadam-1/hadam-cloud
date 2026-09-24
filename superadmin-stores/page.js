@@ -23,7 +23,8 @@
     var s = await sb.auth.getSession();
     var token = s.data.session && s.data.session.access_token;
     opts = opts || {};
-    opts.headers = Object.assign({ Authorization: 'Bearer ' + token }, opts.headers || {});
+    var pass = null; try { pass = sessionStorage.getItem('saVerifyPass'); } catch (_) {}
+    opts.headers = Object.assign({ Authorization: 'Bearer ' + token }, pass ? { 'X-SA-Verify': pass } : {}, opts.headers || {});
     var r = await fetch(path, opts);
     var body = {};
     try { body = await r.json(); } catch (_) {}
@@ -34,22 +35,28 @@
   async function route() {
     var s = await sb.auth.getSession();
     if (!s.data.session) return show('login');
-    var aal = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (aal.data && aal.data.currentLevel !== 'aal2') {
-      var f = await sb.auth.mfa.listFactors();
-      var totp = f.data && f.data.totp && f.data.totp.find(function (x) { return x.status === 'verified'; });
-      if (!totp) {
-        show('login');
-        $('loginMsg').textContent = 'This account has no authenticator app set up. Superadmin access needs one.';
-        await sb.auth.signOut();
-        return;
-      }
-      state.factorId = totp.id;
-      show('mfa');
-      $('code').focus();
-      return;
-    }
     await load();
+  }
+
+  async function sendEmailCode() {
+    show('mfa');
+    $('mfaMsg').className = 'msg err'; $('mfaMsg').textContent = '';
+    $('mfaInfo').textContent = 'Sending a 6-digit code to your superadmin email…';
+    try {
+      var r = await api('/api/sa-stores/email-code/send', { method: 'POST' });
+      $('mfaInfo').textContent = 'We emailed a 6-digit code to ' + r.to + '. It expires in 10 minutes.';
+    } catch (e) {
+      if (e.code === 'wait_before_resend') {
+        $('mfaInfo').textContent = 'A code was sent recently. Check your email, or wait a minute to send a new one.';
+      } else if (e.code === 'not_superadmin') {
+        $('mfaInfo').textContent = '';
+        $('mfaMsg').textContent = 'This account is not a superadmin.';
+      } else {
+        $('mfaInfo').textContent = '';
+        $('mfaMsg').textContent = 'Could not send the code: ' + e.message + (e.detail ? ' — ' + e.detail : '');
+      }
+    }
+    $('code').focus();
   }
 
   async function load(keepMsg) {
@@ -65,8 +72,9 @@
     } catch (e) {
       if (e.code === 'not_superadmin') {
         $('rows').innerHTML = '<tr><td colspan="6" class="err">This account is not a superadmin.</td></tr>';
-      } else if (e.code === 'mfa_required') {
-        return route();
+      } else if (e.code === 'verification_required') {
+        try { sessionStorage.removeItem('saVerifyPass'); } catch (_) {}
+        return sendEmailCode();
       } else if (e.code === 'not_signed_in' || e.code === 'invalid_session') {
         await sb.auth.signOut(); return route();
       } else {
@@ -161,13 +169,23 @@
     });
     $('mfaForm').addEventListener('submit', async function (ev) {
       ev.preventDefault();
-      $('mfaMsg').textContent = '';
-      var r = await sb.auth.mfa.challengeAndVerify({ factorId: state.factorId, code: $('code').value.trim() });
-      if (r.error) { $('mfaMsg').textContent = r.error.message; return; }
-      $('code').value = '';
-      load();
+      $('mfaMsg').className = 'msg err'; $('mfaMsg').textContent = '';
+      try {
+        var r = await api('/api/sa-stores/email-code/verify', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: $('code').value.trim() }),
+        });
+        try { sessionStorage.setItem('saVerifyPass', r.pass); } catch (_) {}
+        state.pass = r.pass;
+        $('code').value = '';
+        load();
+      } catch (e) {
+        var m = { wrong_code: 'That code is not right.', code_expired: 'That code has expired — send a new one.', too_many_attempts: 'Too many wrong tries — send a new code.' };
+        $('mfaMsg').textContent = m[e.code] || ('Verification failed: ' + e.message);
+      }
     });
-    $('signout').addEventListener('click', async function () { await sb.auth.signOut(); show('login'); });
+    $('resend').addEventListener('click', sendEmailCode);
+    $('signout').addEventListener('click', async function () { try { sessionStorage.removeItem('saVerifyPass'); } catch (_) {} await sb.auth.signOut(); show('login'); });
     $('q').addEventListener('input', renderRows);
     $('fStatus').addEventListener('change', function () { state.tile = ''; render(); });
     $('fMarket').addEventListener('change', function () { state.tile = ''; render(); });
