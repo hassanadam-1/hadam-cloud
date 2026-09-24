@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hadam — Stores (Superadmin)</title>
+<style>
+  :root { --amber:#f5a623; --navy:#1c2541; --bg:#f6f7fb; --card:#fff; --text:#1c2541; --muted:#6b7280; --line:#e5e7eb; --red:#c0392b; --green:#1e8e5a; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  header { background:var(--navy); color:#fff; padding:14px 20px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; flex:1; }
+  header .dot { width:12px; height:12px; border-radius:50%; background:var(--amber); display:inline-block; margin-right:8px; }
+  header a, header button.link { color:#fff; opacity:.85; font-size:14px; background:none; border:0; cursor:pointer; text-decoration:underline; }
+  main { max-width:1200px; margin:0 auto; padding:20px 16px 60px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .hidden { display:none !important; }
+  .auth { max-width:380px; margin:40px auto; }
+  .auth h2 { margin-top:0; }
+  label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
+  input, select { width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px; font-size:15px; }
+  button.primary { background:var(--amber); color:var(--navy); border:0; padding:10px 16px; border-radius:8px; font-weight:600; cursor:pointer; font-size:15px; }
+  button.primary:disabled { opacity:.5; cursor:default; }
+  .msg { margin-top:10px; font-size:14px; }
+  .err { color:var(--red); }
+  .ok { color:var(--green); }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-bottom:16px; }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; cursor:pointer; }
+  .tile.active { border-color:var(--amber); box-shadow:0 0 0 2px var(--amber) inset; }
+  .tile .n { font-size:26px; font-weight:700; }
+  .tile .l { font-size:13px; color:var(--muted); text-transform:capitalize; }
+  .tile.del .n { color:var(--red); }
+  .filters { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+  .filters input { flex:2; min-width:200px; }
+  .filters select { flex:1; min-width:150px; }
+  .tablewrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; background:#eef0f5; text-transform:capitalize; }
+  .badge.active { background:#e3f5ec; color:var(--green); }
+  .badge.deleted { background:#fbe7e5; color:var(--red); }
+  .badge.suspended, .badge.cancelled, .badge.pending { background:#fff4dd; color:#8a5a00; }
+  .small { font-size:12px; color:var(--muted); }
+  button.restore { background:var(--navy); color:#fff; border:0; padding:6px 12px; border-radius:6px; cursor:pointer; }
+  .note { font-size:13px; color:var(--muted); margin:8px 0 0; }
+  .count { font-size:13px; color:var(--muted); margin:6px 0 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="dot"></span>Hadam — Stores (Superadmin)</h1>
+  <a href="/">Back to dashboard</a>
+  <button class="link hidden" id="signout">Sign out</button>
+</header>
+<main>
+  <div id="boot" class="card auth">Loading…</div>
+
+  <div id="login" class="card auth hidden">
+    <h2>Superadmin sign in</h2>
+    <form id="loginForm">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" required>
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <div style="margin-top:14px"><button class="primary" type="submit">Sign in</button></div>
+    </form>
+    <div id="loginMsg" class="msg err"></div>
+  </div>
+
+  <div id="mfa" class="card auth hidden">
+    <h2>Authenticator code</h2>
+    <p class="small">Enter the 6-digit code from your authenticator app.</p>
+    <form id="mfaForm">
+      <label for="code">Code</label>
+      <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
+      <div style="margin-top:14px"><button class="primary" type="submit">Verify</button></div>
+    </form>
+    <div id="mfaMsg" class="msg err"></div>
+  </div>
+
+  <div id="app" class="hidden">
+    <div class="tiles" id="tiles"></div>
+    <div class="card">
+      <div class="filters">
+        <input id="q" type="search" placeholder="Find a store — name, subdomain, owner email or ID">
+        <select id="fStatus"><option value="">All statuses</option></select>
+        <select id="fMarket">
+          <option value="">Marketplace: any</option>
+          <option value="yes">With marketplace listing</option>
+          <option value="no">Without marketplace listing</option>
+        </select>
+      </div>
+      <div class="count" id="count"></div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Store</th><th>Status</th><th>Owner</th><th>Marketplace</th><th>Created</th><th></th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <p class="note" id="marketNote"></p>
+    </div>
+    <div id="appMsg" class="msg"></div>
+  </div>
+</main>
+<script src="/superadmin/stores/supabase.js"></script>
+<script src="/superadmin/stores/page.js"></script>
+</body>
+</html>

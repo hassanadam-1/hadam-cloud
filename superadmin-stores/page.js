@@ -1,0 +1,199 @@
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var sb = null;
+  var state = { tenants: [], marketplace: {}, restoreStatus: 'active', tile: '' };
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function fmtDate(d) {
+    if (!d) return '';
+    var x = new Date(d);
+    return isNaN(x) ? '' : x.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+  function show(id) {
+    ['boot', 'login', 'mfa', 'app'].forEach(function (s) { $(s).classList.toggle('hidden', s !== id); });
+    $('signout').classList.toggle('hidden', id === 'boot' || id === 'login');
+  }
+
+  async function api(path, opts) {
+    var s = await sb.auth.getSession();
+    var token = s.data.session && s.data.session.access_token;
+    opts = opts || {};
+    opts.headers = Object.assign({ Authorization: 'Bearer ' + token }, opts.headers || {});
+    var r = await fetch(path, opts);
+    var body = {};
+    try { body = await r.json(); } catch (_) {}
+    if (!r.ok) { var e = new Error(body.error || ('HTTP ' + r.status)); e.code = body.error; e.detail = body.detail; throw e; }
+    return body;
+  }
+
+  async function route() {
+    var s = await sb.auth.getSession();
+    if (!s.data.session) return show('login');
+    var aal = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aal.data && aal.data.currentLevel !== 'aal2') {
+      var f = await sb.auth.mfa.listFactors();
+      var totp = f.data && f.data.totp && f.data.totp.find(function (x) { return x.status === 'verified'; });
+      if (!totp) {
+        show('login');
+        $('loginMsg').textContent = 'This account has no authenticator app set up. Superadmin access needs one.';
+        await sb.auth.signOut();
+        return;
+      }
+      state.factorId = totp.id;
+      show('mfa');
+      $('code').focus();
+      return;
+    }
+    await load();
+  }
+
+  async function load(keepMsg) {
+    show('app');
+    if (!keepMsg) $('appMsg').textContent = '';
+    $('rows').innerHTML = '<tr><td colspan="6" class="small">Loading stores…</td></tr>';
+    try {
+      var d = await api('/api/sa-stores/tenants');
+      state.tenants = d.tenants || [];
+      state.marketplace = d.marketplace || {};
+      state.restoreStatus = d.restore_status || 'active';
+      render();
+    } catch (e) {
+      if (e.code === 'not_superadmin') {
+        $('rows').innerHTML = '<tr><td colspan="6" class="err">This account is not a superadmin.</td></tr>';
+      } else if (e.code === 'mfa_required') {
+        return route();
+      } else if (e.code === 'not_signed_in' || e.code === 'invalid_session') {
+        await sb.auth.signOut(); return route();
+      } else {
+        $('rows').innerHTML = '<tr><td colspan="6" class="err">Could not load stores: ' + esc(e.message) + (e.detail ? ' — ' + esc(e.detail) : '') + '</td></tr>';
+      }
+    }
+  }
+
+  function render() {
+    var t = state.tenants;
+    var byStatus = {};
+    t.forEach(function (x) { byStatus[x.status] = (byStatus[x.status] || 0) + 1; });
+    var withM = t.filter(function (x) { return x.has_marketplace; }).length;
+
+    var tiles = [{ key: '', n: t.length, l: 'All stores' }];
+    Object.keys(byStatus).sort().forEach(function (s) { tiles.push({ key: 'status:' + s, n: byStatus[s], l: s, del: s === 'deleted' }); });
+    if (state.marketplace.available) {
+      tiles.push({ key: 'm:yes', n: withM, l: 'With marketplace' });
+      tiles.push({ key: 'm:no', n: t.length - withM, l: 'Without marketplace' });
+    }
+    $('tiles').innerHTML = tiles.map(function (x) {
+      return '<div class="tile' + (x.del ? ' del' : '') + (state.tile === x.key ? ' active' : '') + '" data-key="' + esc(x.key) + '">' +
+        '<div class="n">' + x.n + '</div><div class="l">' + esc(x.l) + '</div></div>';
+    }).join('');
+
+    var sel = $('fStatus'), cur = sel.value;
+    sel.innerHTML = '<option value="">All statuses</option>' + Object.keys(byStatus).sort().map(function (s) {
+      return '<option value="' + esc(s) + '">' + esc(s) + ' (' + byStatus[s] + ')</option>';
+    }).join('');
+    sel.value = cur;
+    $('fMarket').disabled = !state.marketplace.available;
+
+    $('marketNote').textContent = state.marketplace.available
+      ? 'Marketplace listings read from table "' + state.marketplace.table + '" (' + state.marketplace.total + ' listings).'
+      : 'Marketplace listing data was not found, so the marketplace report is unavailable. Tell Claude your marketplace table name.';
+    renderRows();
+  }
+
+  function renderRows() {
+    var q = $('q').value.trim().toLowerCase();
+    var st = $('fStatus').value;
+    var mk = $('fMarket').value;
+    var list = state.tenants.filter(function (x) {
+      if (st && x.status !== st) return false;
+      if (mk === 'yes' && !x.has_marketplace) return false;
+      if (mk === 'no' && x.has_marketplace) return false;
+      if (!q) return true;
+      return [x.name, x.subdomain, x.owner_email, x.id].some(function (v) { return v && String(v).toLowerCase().indexOf(q) !== -1; });
+    });
+    $('count').textContent = 'Showing ' + list.length + ' of ' + state.tenants.length + ' stores';
+    if (!list.length) { $('rows').innerHTML = '<tr><td colspan="6" class="small">No stores match.</td></tr>'; return; }
+    $('rows').innerHTML = list.map(function (x) {
+      var m = x.has_marketplace
+        ? x.marketplace.map(function (l) { return '<span class="badge">' + esc(l.status || 'listed') + '</span>'; }).join(' ')
+        : '<span class="small">—</span>';
+      var del = x.status === 'deleted'
+        ? '<div class="small">Deleted ' + esc(fmtDate(x.deleted_at)) + (x.deleted_by_email ? ' by ' + esc(x.deleted_by_email) : '') + '</div>'
+        : '';
+      var action = x.status === 'deleted'
+        ? '<button class="restore" data-id="' + esc(x.id) + '" data-name="' + esc(x.name) + '">Restore</button>'
+        : '';
+      return '<tr><td><strong>' + esc(x.name) + '</strong><div class="small">' + esc(x.subdomain || '') + '</div></td>' +
+        '<td><span class="badge ' + esc(x.status) + '">' + esc(x.status) + '</span>' + del + '</td>' +
+        '<td>' + esc(x.owner_email || '') + '</td><td>' + m + '</td>' +
+        '<td>' + esc(fmtDate(x.created_at)) + '</td><td>' + action + '</td></tr>';
+    }).join('');
+  }
+
+  async function restore(btn) {
+    var name = btn.getAttribute('data-name');
+    if (!confirm('Restore "' + name + '"?\n\nIt will be set back to "' + state.restoreStatus + '" and its store address will work again.')) return;
+    btn.disabled = true; btn.textContent = 'Restoring…';
+    try {
+      await api('/api/sa-stores/tenants/' + encodeURIComponent(btn.getAttribute('data-id')) + '/restore', { method: 'POST' });
+      $('appMsg').className = 'msg ok';
+      $('appMsg').textContent = '"' + name + '" restored.';
+      await load(true);
+    } catch (e) {
+      btn.disabled = false; btn.textContent = 'Restore';
+      $('appMsg').className = 'msg err';
+      $('appMsg').textContent = 'Restore failed: ' + e.message + (e.detail ? ' — ' + e.detail : '');
+    }
+  }
+
+  function wire() {
+    $('loginForm').addEventListener('submit', async function (ev) {
+      ev.preventDefault();
+      $('loginMsg').textContent = '';
+      var r = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('password').value });
+      if (r.error) { $('loginMsg').textContent = r.error.message; return; }
+      route();
+    });
+    $('mfaForm').addEventListener('submit', async function (ev) {
+      ev.preventDefault();
+      $('mfaMsg').textContent = '';
+      var r = await sb.auth.mfa.challengeAndVerify({ factorId: state.factorId, code: $('code').value.trim() });
+      if (r.error) { $('mfaMsg').textContent = r.error.message; return; }
+      $('code').value = '';
+      load();
+    });
+    $('signout').addEventListener('click', async function () { await sb.auth.signOut(); show('login'); });
+    $('q').addEventListener('input', renderRows);
+    $('fStatus').addEventListener('change', function () { state.tile = ''; render(); });
+    $('fMarket').addEventListener('change', function () { state.tile = ''; render(); });
+    $('tiles').addEventListener('click', function (ev) {
+      var el = ev.target.closest('.tile'); if (!el) return;
+      var key = el.getAttribute('data-key');
+      state.tile = key;
+      $('fStatus').value = key.indexOf('status:') === 0 ? key.slice(7) : '';
+      $('fMarket').value = key.indexOf('m:') === 0 ? key.slice(2) : '';
+      render();
+    });
+    $('rows').addEventListener('click', function (ev) {
+      var b = ev.target.closest('button.restore'); if (b) restore(b);
+    });
+  }
+
+  (async function init() {
+    try {
+      var cfg = await (await fetch('/api/sa-stores/config')).json();
+      if (!cfg.anonKey) throw new Error('SUPABASE_ANON_KEY is not set on the server');
+      if (!window.supabase || !window.supabase.createClient) throw new Error('Supabase library did not load');
+      sb = window.supabase.createClient(cfg.url, cfg.anonKey);
+      wire();
+      await route();
+    } catch (e) {
+      $('boot').innerHTML = '<span class="err">Could not start: ' + esc(e.message) + '</span>';
+    }
+  })();
+})();

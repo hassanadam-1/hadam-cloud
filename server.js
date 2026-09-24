@@ -6431,7 +6431,9 @@ function serveStatic(res, dir, pathname) {
   return false;
 }
 
+const saStores = require('./superadmin-stores/router.cjs');
 const server = http.createServer(async (req, res) => {
+  if (await saStores(req, res)) return;
   if (req.method === 'OPTIONS') {
     res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type,Authorization' });
     return res.end();
