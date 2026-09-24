@@ -19,9 +19,21 @@
     $('signout').classList.toggle('hidden', id === 'boot' || id === 'login');
   }
 
-  async function api(path, opts) {
+  // Main-dashboard login (localStorage 'hadam_super_token') is reused so no second sign-in is needed.
+  function mainToken() {
+    try {
+      if (sessionStorage.getItem('saIgnoreMain') === '1') return null;
+      var t = localStorage.getItem('hadam_super_token');
+      return t && t.split('.').length === 3 ? t : null;
+    } catch (_) { return null; }
+  }
+  async function getToken() {
     var s = await sb.auth.getSession();
-    var token = s.data.session && s.data.session.access_token;
+    return (s.data.session && s.data.session.access_token) || mainToken();
+  }
+
+  async function api(path, opts) {
+    var token = await getToken();
     opts = opts || {};
     var pass = null; try { pass = sessionStorage.getItem('saVerifyPass'); } catch (_) {}
     opts.headers = Object.assign({ Authorization: 'Bearer ' + token }, pass ? { 'X-SA-Verify': pass } : {}, opts.headers || {});
@@ -40,7 +52,7 @@
     setTimeout(function () { ['email', 'password'].forEach(function (id) { $(id).value = ''; }); }, 600);
   }
   async function signOutHere() {
-    try { sessionStorage.removeItem('saVerifyPass'); } catch (_) {}
+    try { sessionStorage.removeItem('saVerifyPass'); sessionStorage.setItem('saIgnoreMain', '1'); } catch (_) {}
     try { await sb.auth.signOut({ scope: 'local' }); } catch (_) {}
     state.tenants = [];
     $('rows').innerHTML = ''; $('tiles').innerHTML = '';
@@ -48,8 +60,7 @@
   }
 
   async function route() {
-    var s = await sb.auth.getSession();
-    if (!s.data.session) { show('login'); clearLoginForm(); return; }
+    if (!(await getToken())) { show('login'); clearLoginForm(); return; }
     await load();
   }
 
@@ -205,6 +216,9 @@
     });
     $('resend').addEventListener('click', sendEmailCode);
     $('signout').addEventListener('click', async function () { await signOutHere(); show('login'); });
+    $('backLink').addEventListener('click', function (ev) {
+      if (window.opener && !window.opener.closed) { ev.preventDefault(); try { window.opener.focus(); } catch (_) {} window.close(); }
+    });
     $('q').addEventListener('input', renderRows);
     $('fStatus').addEventListener('change', function () { state.tile = ''; render(); });
     $('fMarket').addEventListener('change', function () { state.tile = ''; render(); });

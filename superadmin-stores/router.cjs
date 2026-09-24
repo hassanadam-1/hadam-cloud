@@ -319,6 +319,14 @@ async function handle(req, res) {
       else { res.writeHead(302, { Location: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js' }); res.end(); }
       return true;
     }
+    if (req.method === 'GET' && url === '/superadmin/stores/nav.js') {
+      sendFile(res, path.join(HERE, 'nav.js'), 'application/javascript; charset=utf-8'); return true;
+    }
+    if (req.method === 'GET' && url === '/api/sa-stores/whoami') {
+      const a = await authSuperadmin(req);
+      sendJson(res, 200, a.error ? { superadmin: false, reason: a.error } : { superadmin: true });
+      return true;
+    }
     if (req.method === 'GET' && url === '/api/sa-stores/config') {
       sendJson(res, 200, { url: SUPABASE_URL, anonKey: ANON_KEY || null }); return true;
     }
