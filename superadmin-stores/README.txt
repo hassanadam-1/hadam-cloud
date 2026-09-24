@@ -9,7 +9,7 @@ Page:  https://hadamplatform.com/superadmin/stores  (also a "Stores" item in the
 INSTALL (Git Bash)
 1) Unzip so the folder sits next to server.js:
      cd ~/Desktop/hadam-v3
-     unzip -o /c/Users/LENOVO/Downloads/superadmin-stores-v5.zip -d .
+     unzip -o /c/Users/LENOVO/Downloads/superadmin-stores-v6.zip -d .
      ls superadmin-stores        -> router.cjs  page.html  page.js  README.txt
 
 2) Hook it into server.js (plain Node http server). Two lines, added by this command:
@@ -30,5 +30,5 @@ No database changes needed. No changes to app.js.
 MAIN MENU ITEM (v5)
 - public-platform/index.html loads the menu script, right after <script src="/app.js"></script>:
      <script src="/superadmin/stores/nav.js" defer></script>
-- "Stores" appears next to "Dashboard" only while a superadmin is logged in (server-checked), hides on logout.
-- Opens in a new tab and reuses the dashboard login (hadam_super_token); "Back to dashboard" closes that tab.
+- "Stores admin" appears right after "Dashboard" only while a superadmin is logged in, hides on logout.
+- Opens inside the same page (overlay, Close / Esc) and reuses the dashboard login - no separate login screen.

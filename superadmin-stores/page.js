@@ -20,10 +20,13 @@
   }
 
   // Main-dashboard login (localStorage 'hadam_super_token') is reused so no second sign-in is needed.
+  var EMBEDDED = /[?&]embedded=1/.test(location.search) && window.parent !== window;
   function mainToken() {
     try {
       if (sessionStorage.getItem('saIgnoreMain') === '1') return null;
-      var t = localStorage.getItem('hadam_super_token');
+      var t = null;
+      try { if (EMBEDDED && window.parent.hadamSaGetToken) t = window.parent.hadamSaGetToken(); } catch (_) {}
+      t = t || localStorage.getItem('hadam_super_token');
       return t && t.split('.').length === 3 ? t : null;
     } catch (_) { return null; }
   }
@@ -135,7 +138,7 @@
 
     $('marketNote').textContent = state.marketplace.available
       ? 'Marketplace listings read from table "' + state.marketplace.table + '" (' + state.marketplace.total + ' listings).'
-      : 'Marketplace listing data was not found, so the marketplace report is unavailable. Tell Claude your marketplace table name.';
+      : 'Marketplace report unavailable: marketplace listing table not found (set SA_MARKETPLACE_TABLE on the server).';
     renderRows();
   }
 
@@ -216,7 +219,9 @@
     });
     $('resend').addEventListener('click', sendEmailCode);
     $('signout').addEventListener('click', async function () { await signOutHere(); show('login'); });
+    if (EMBEDDED) { var hd = document.querySelector('header'); if (hd) hd.style.display = 'none'; }
     $('backLink').addEventListener('click', function (ev) {
+      if (EMBEDDED && window.parent.hadamSaClose) { ev.preventDefault(); window.parent.hadamSaClose(); return; }
       if (window.opener && !window.opener.closed) { ev.preventDefault(); try { window.opener.focus(); } catch (_) {} window.close(); }
     });
     $('q').addEventListener('input', renderRows);
