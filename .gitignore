@@ -66,6 +66,23 @@ stripetoken.txt
 token.txt
 forced-failure-test.js
 passcodes/
-my-supabase-keys.sh
-my-supabase-keys.sh
-my-supabase-keys.sh
+
+# Added 25 Sep 2026 — personal notes, backups, codes and one-off scripts
+*backup-codes*
+*key-rotation-notes*
+issuesupdated info/
+HadamBackups/
+project materials*.zip
+*.bak
+*.exe
+/platform-app*.js
+/fix-*.js
+/reset-*.js
+/storage-backup.js
+/hadam-backup.ps1
+lib/*.ics
+/app.js
+scripts/test-*.js
+scripts/delete-test-file.js
+supabase/.temp/
+supabase/.branches/
