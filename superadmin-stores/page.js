@@ -112,11 +112,22 @@
     }
   }
 
-  function mStatus(x) { return x.marketplace ? (x.marketplace.status || 'unknown') : 'none'; }
+  function mStatus(x) {
+    if (x.directory) return x.directory.listed ? 'listed' : (x.marketplace && x.marketplace.status === 'active' ? 'member only' : 'not listed');
+    return x.marketplace ? (x.marketplace.status || 'unknown') : 'none';
+  }
   function sStatus(x) { return x.kind === 'member' ? 'no store' : x.status; }
   function canStore(x) { return x.kind === 'store' && x.status !== 'active'; }
   function featuredLapsed(m) { return m && m.plan === 'featured' && m.expires_at && new Date(m.expires_at) < new Date(); }
-  function canMarket(x) { var m = x.marketplace; return !!m && m.status !== 'active' && (state.reactivatable || []).indexOf(m.status) !== -1 && !featuredLapsed(m); }
+  function memberFixable(m) { return !!m && m.status !== 'active' && (state.reactivatable || []).indexOf(m.status) !== -1 && !featuredLapsed(m); }
+  function dirFixable(x) { var d = x.directory; return !!d && !d.expired && (d.reason === 'plan_store_only' || (d.reason === 'store_not_active' && ['marketplace', 'both'].indexOf(d.plan) === -1)); }
+  function canMarket(x) {
+    if (x.kind === 'member') return memberFixable(x.marketplace);
+    var d = x.directory || {};
+    if (d.expired) return false;
+    return dirFixable(x) || memberFixable(x.marketplace);
+  }
+  var DIR_TEXT = { store_not_active: 'store not active', plan_store_only: 'plan is "store" (not listed)', subscription_expired: 'subscription expired' };
 
   function render() {
     var t = state.tenants;
@@ -131,9 +142,9 @@
     if (state.marketplace.available) {
       Object.keys(byM).sort().forEach(function (s) {
         if (s === 'none') return;
-        tiles.push({ key: 'm:' + s, n: byM[s], l: 'Marketplace ' + s, del: s === 'deleted' || s === 'suspended' });
+        tiles.push({ key: 'm:' + s, n: byM[s], l: (s === 'listed' || s === 'not listed' || s === 'member only' ? 'Directory: ' : 'Marketplace ') + s, del: s === 'deleted' || s === 'suspended' || s === 'not listed' });
       });
-      tiles.push({ key: 'm:none', n: byM.none || 0, l: 'Stores without marketplace' });
+      if (byM.none) tiles.push({ key: 'm:none', n: byM.none, l: 'No marketplace' });
       if (memberOnly) tiles.push({ key: 'status:no store', n: memberOnly, l: 'Marketplace only (no store)' });
     }
     $('tiles').innerHTML = tiles.map(function (x) {
@@ -183,6 +194,13 @@
           '<div class="small">' + esc(m.business_name || '') + (m.plan ? ' · ' + esc(m.plan) : '') +
           (m.expires_at ? ' · until ' + esc(fmtDate(m.expires_at)) : '') + '</div>'
         : '<span class="badge">none</span>' + (x.store_plan && /market|both/.test(x.store_plan) ? '<div class="small">store plan: ' + esc(x.store_plan) + '</div>' : '');
+      if (x.directory) {
+        var d = x.directory;
+        mCell = '<div><span class="badge ' + (d.listed ? 'active' : 'deleted') + '">' + (d.listed ? 'Listed' : 'Not listed') + '</span>' +
+          '<div class="small">Public directory' + (d.listed ? '' : ': ' + esc(DIR_TEXT[d.reason] || d.reason)) +
+          ' · plan ' + esc(d.plan || '?') + (d.expiry ? ' · sub until ' + esc(fmtDate(d.expiry)) : '') + '</div></div>' +
+          (m ? '<div style="margin-top:6px"><span class="badge ' + esc(m.status) + '">' + esc(m.status) + '</span><div class="small">Member listing: ' + esc(m.business_name || '') + (m.plan ? ' · ' + esc(m.plan) : '') + '</div></div>' : '');
+      }
       var sCell = x.kind === 'member'
         ? '<span class="small">— marketplace only —</span>'
         : '<span class="badge ' + esc(x.status) + '">' + esc(x.status) + '</span>' +
@@ -193,7 +211,8 @@
       if (cs) btns.push('<button class="restore" data-what="store"' + data + '>Activate store</button>');
       if (cm) btns.push('<button class="restore" data-what="marketplace"' + data + '>Activate marketplace</button>');
       if (cs && cm) btns.push('<button class="restore both" data-what="both"' + data + '>Activate both</button>');
-      if (m && m.status !== 'active' && !cm) btns.push('<div class="small">' + (featuredLapsed(m)
+      if (x.directory && x.directory.expired) btns.push('<div class="small">Subscription ended ' + esc(fmtDate(x.directory.expiry)) + ' — renew to list it</div>');
+      else if (m && m.status !== 'active' && !memberFixable(m) && x.kind === 'member') btns.push('<div class="small">' + (featuredLapsed(m)
         ? 'Marketplace: Featured period ended — use Renew'
         : 'Marketplace: approve via Marketplace approvals') + '</div>');
       return '<tr><td><strong>' + esc(x.name) + '</strong><div class="small">' + esc(x.subdomain || '') + '</div></td>' +
@@ -203,19 +222,23 @@
     }).join('');
   }
 
-  var WHAT_TEXT = { store: 'the store', marketplace: 'the marketplace listing', both: 'the store AND its marketplace listing' };
+  var WHAT_TEXT = { store: 'the store', marketplace: 'the marketplace listing (public directory + member listing)', both: 'the store AND its marketplace listing' };
   async function restore(btn) {
     var name = btn.getAttribute('data-name'), what = btn.getAttribute('data-what');
     if (!confirm('Activate ' + WHAT_TEXT[what] + ' for "' + name + '"?')) return;
     var label = btn.textContent;
     btn.disabled = true; btn.textContent = 'Working…';
     try {
-      await api('/api/sa-stores/activate', {
+      var r = await api('/api/sa-stores/activate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ what: what, tenant_id: btn.getAttribute('data-tid') || null, member_id: btn.getAttribute('data-mid') || null }),
       });
       $('appMsg').className = 'msg ok';
-      $('appMsg').textContent = '"' + name + '": ' + WHAT_TEXT[what] + ' activated.';
+      var done = [];
+      if (r.store) done.push('store activated');
+      if (r.directory) done.push('listed in the public Marketplace & Stores directory (plan ' + r.directory.plan + ')');
+      if (r.marketplace) done.push('member listing activated');
+      $('appMsg').textContent = '"' + name + '": ' + (done.join('; ') || 'done') + '.' + (r.notes && r.notes.length ? ' Note: ' + r.notes.join(' ') : '');
       await load(true);
     } catch (e) {
       btn.disabled = false; btn.textContent = label;

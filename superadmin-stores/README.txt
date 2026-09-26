@@ -9,7 +9,7 @@ Page:  https://hadamplatform.com/superadmin/stores  (also a "Stores" item in the
 INSTALL (Git Bash)
 1) Unzip so the folder sits next to server.js:
      cd ~/Desktop/hadam-v3
-     unzip -o /c/Users/LENOVO/Downloads/superadmin-stores-v7.zip -d .
+     unzip -o /c/Users/LENOVO/Downloads/superadmin-stores-v8.zip -d .
      ls superadmin-stores        -> router.cjs  page.html  page.js  README.txt
 
 2) Hook it into server.js (plain Node http server). Two lines, added by this command:
@@ -40,3 +40,11 @@ STORE + MARKETPLACE (v7)
 - Marketplace can be re-activated from: suspended, expired, deleted (and inactive/cancelled/disabled).
   pending / rejected -> use the normal Marketplace approvals. Featured with an ended period -> use Renew.
 - Audit entries: store_restored, marketplace_reactivated (best effort). Render log lines "[superadmin-stores] ... activated ...".
+
+PUBLIC DIRECTORY (v8)
+- Public "Marketplace & Stores" lists a STORE only if: status active + plan 'marketplace' or 'both' +
+  current_subscriptions.expiry_date not passed (same rules as GET /api/platform/directory).
+- Stores admin shows "Listed / Not listed" with the reason. For a store, Activate marketplace
+  sets plan 'store' -> 'both' (keeps the store) and re-activates its member listing if possible.
+  An expired subscription is never overridden here - renew it.
+- Audit: store_listed_in_marketplace.

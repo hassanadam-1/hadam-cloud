@@ -180,6 +180,19 @@ async function loadMembers() {
   try { return { available: true, rows: await fetchAll(MEMBER_TABLE) }; }
   catch (e) { return { available: false, rows: [], error: e.message }; }
 }
+async function loadSubs() {
+  try { return await fetchAll('current_subscriptions'); } catch (_) { return []; }
+}
+// Same rules as GET /api/platform/directory (the public "Marketplace & Stores" page).
+const DIRECTORY_PLANS = ['marketplace', 'both'];
+function directoryState(t, expiry) {
+  const expired = !!(expiry && new Date(expiry).getTime() < Date.now());
+  let reason = null;
+  if (t.status !== 'active') reason = 'store_not_active';
+  else if (!DIRECTORY_PLANS.includes(t.plan)) reason = 'plan_store_only';
+  else if (expired) reason = 'subscription_expired';
+  return { listed: !reason, reason, plan: t.plan || null, expiry: expiry || null, expired };
+}
 async function loadMemberships() {
   try { return await fetchAll('tenant_memberships'); } catch (_) { return []; }
 }
@@ -246,7 +259,9 @@ function checkSuperadmin(req, res) {
 }
 
 async function listTenants(req, res) {
-  const [tenants, members, memberships] = await Promise.all([fetchAll('tenants'), loadMembers(), loadMemberships()]);
+  const [tenants, members, memberships, subs] = await Promise.all([fetchAll('tenants'), loadMembers(), loadMemberships(), loadSubs()]);
+  const expiryByTenant = {};
+  for (const s of subs) if (s.tenant_id) expiryByTenant[s.tenant_id] = s.expiry_date || null;
   const ownerKeys = ['owner_id', 'owner_user_id', 'created_by', 'user_id'];
 
   // Owner user ids per store: tenant owner column + owner/admin memberships.
@@ -303,6 +318,7 @@ async function listTenants(req, res) {
       deleted_at: t.deleted_at || null,
       deleted_by_email: t.deleted_by ? emails[t.deleted_by] || t.deleted_by : null,
       marketplace: mm ? memberView(mm.m, mm.link) : null,
+      directory: directoryState(t, expiryByTenant[t.id]),
     };
   });
   for (const m of unlinked) {
@@ -337,14 +353,14 @@ async function checkStore(id) {
   const { data: t, error } = await admin().from('tenants').select('*').eq('id', id).maybeSingle();
   if (error) throw error;
   if (!t) return { error: 'store_not_found', code: 404 };
-  if (t.status === 'active') return { error: 'store_already_active', code: 409 };
+  if (t.status === 'active') return { error: 'store_already_active', code: 409, detail: 'Store is already active.' };
   return { t };
 }
 async function checkMember(id) {
   const { data: m, error } = await admin().from(MEMBER_TABLE).select('*').eq('id', id).maybeSingle();
   if (error) throw error;
   if (!m) return { error: 'marketplace_not_found', code: 404 };
-  if (m.status === 'active') return { error: 'marketplace_already_active', code: 409 };
+  if (m.status === 'active') return { error: 'marketplace_already_active', code: 409, detail: 'Member listing is already active.' };
   if (!MEMBER_REACTIVATABLE.includes(m.status)) {
     return { error: 'marketplace_needs_approval', code: 409, detail: 'Status is "' + m.status + '" — approve it through the normal Marketplace approvals.' };
   }
@@ -352,6 +368,32 @@ async function checkMember(id) {
     return { error: 'marketplace_subscription_expired', code: 409, detail: 'Featured subscription ended ' + String(m.subscription_expires_at).slice(0, 10) + ' — use Renew so it is not expired again.' };
   }
   return { m };
+}
+
+// Put a store back on the public Marketplace & Stores directory (plan 'store' -> 'both').
+async function checkDirectory(id, storeWillBeActive) {
+  const { data: t, error } = await admin().from('tenants').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  if (!t) return { error: 'store_not_found', code: 404 };
+  let expiry = null;
+  try {
+    const { data: s } = await admin().from('current_subscriptions').select('expiry_date').eq('tenant_id', id).maybeSingle();
+    expiry = s && s.expiry_date;
+  } catch (_) {}
+  if (expiry && new Date(expiry).getTime() < Date.now()) {
+    return { error: 'subscription_expired', code: 409, detail: 'Store subscription ended ' + String(expiry).slice(0, 10) + ' — renew the subscription to list it again.' };
+  }
+  if (t.status !== 'active' && !storeWillBeActive) {
+    return { error: 'store_not_active', code: 409, detail: 'Activate the store first (or use Activate both).' };
+  }
+  const needPlan = !DIRECTORY_PLANS.includes(t.plan);
+  return { t, needPlan };
+}
+async function applyDirectory(d) {
+  if (!d.needPlan) return d.t;
+  const { data, error } = await admin().from('tenants').update({ plan: 'both' }).eq('id', d.t.id).select('*').maybeSingle();
+  if (error) throw error;
+  return data;
 }
 
 async function activateStore(t) {
@@ -374,20 +416,42 @@ async function activateMember(m) {
 }
 
 // POST /api/sa-stores/activate  { what: 'store'|'marketplace'|'both', tenant_id, member_id }
+// For a store, "marketplace" = be listed on the public directory (plan + subscription) AND
+// re-activate its linked marketplace membership if it has one that can be re-activated.
 async function activate(req, res, body) {
   const what = body.what;
   if (!['store', 'marketplace', 'both'].includes(what)) return sendJson(res, 400, { error: 'bad_request' });
   const wantStore = what !== 'marketplace';
-  const wantMember = what !== 'store';
+  const wantMarket = what !== 'store';
   if (wantStore && !body.tenant_id) return sendJson(res, 400, { error: 'store_missing' });
-  if (wantMember && !body.member_id) return sendJson(res, 400, { error: 'no_marketplace_listing' });
+  if (wantMarket && !body.tenant_id && !body.member_id) return sendJson(res, 400, { error: 'no_marketplace_listing' });
 
-  // Check everything first, so "both" never half-applies.
-  const s = wantStore ? await checkStore(body.tenant_id) : null;
-  if (s && s.error) return sendJson(res, s.code, { error: s.error, detail: s.detail });
-  const mm = wantMember ? await checkMember(body.member_id) : null;
-  if (mm && mm.error) return sendJson(res, mm.code, { error: mm.error, detail: mm.detail });
+  // 1) Check everything first so nothing is half-applied.
+  let s = null, d = null, mm = null;
+  if (wantStore) {
+    s = await checkStore(body.tenant_id);
+    if (s.error && !(s.error === 'store_already_active' && what === 'both')) return sendJson(res, s.code, { error: s.error, detail: s.detail });
+    if (s.error) s = null;
+  }
+  let dirNote = null, memNote = null;
+  if (wantMarket && body.tenant_id) {
+    d = await checkDirectory(body.tenant_id, !!s);
+    if (d.error) { dirNote = d; d = null; }
+  }
+  if (wantMarket && body.member_id) {
+    mm = await checkMember(body.member_id);
+    if (mm.error) { memNote = mm; mm = null; }
+  }
+  // Nothing on the marketplace side can be done -> report the most useful reason.
+  if (wantMarket && !(d && d.needPlan) && !mm && !s) {
+    const why = dirNote || memNote;
+    if (why) return sendJson(res, why.code, { error: why.error, detail: why.detail });
+  }
+  if (!s && !(d && d.needPlan) && !mm) {
+    return sendJson(res, 409, { error: 'nothing_to_activate', detail: 'Already active and listed — nothing to change.' });
+  }
 
+  // 2) Apply.
   const out = {};
   if (s) {
     const t = await activateStore(s.t);
@@ -395,13 +459,20 @@ async function activate(req, res, body) {
     await audit(req.saUser, 'store_restored', { tenant_id: t.id, subdomain: s.t.subdomain || null, from: s.t.status, to: t.status });
     console.log('[superadmin-stores] ' + req.saUser.email + ' activated store ' + t.id + ' (' + (s.t.subdomain || '') + ') from ' + s.t.status);
   }
+  if (d && d.needPlan) {
+    const t = await applyDirectory(d);
+    out.directory = { id: t.id, plan: t.plan };
+    await audit(req.saUser, 'store_listed_in_marketplace', { tenant_id: t.id, subdomain: d.t.subdomain || null, plan_from: d.t.plan, plan_to: t.plan });
+    console.log('[superadmin-stores] ' + req.saUser.email + ' listed store ' + t.id + ' (' + (d.t.subdomain || '') + ') in marketplace: plan ' + d.t.plan + ' -> ' + t.plan);
+  }
   if (mm) {
     const m = await activateMember(mm.m);
     out.marketplace = { id: m.id, status: m.status };
     await audit(req.saUser, 'marketplace_reactivated', { member_id: m.id, business_name: mm.m.business_name || null, from: mm.m.status, to: m.status });
     console.log('[superadmin-stores] ' + req.saUser.email + ' activated marketplace member ' + m.id + ' (' + (mm.m.business_name || '') + ') from ' + mm.m.status);
   }
-  sendJson(res, 200, Object.assign({ ok: true }, out));
+  const notes = [dirNote, memNote].filter(Boolean).map((n) => n.detail || n.error);
+  sendJson(res, 200, Object.assign({ ok: true, notes }, out));
 }
 
 /**
