@@ -96,7 +96,7 @@
       var d = await api('/api/sa-stores/tenants');
       state.tenants = d.tenants || [];
       state.marketplace = d.marketplace || {};
-      state.restoreStatus = d.restore_status || 'active';
+      state.reactivatable = d.reactivatable || [];
       render();
     } catch (e) {
       if (e.code === 'not_superadmin') {
@@ -112,17 +112,29 @@
     }
   }
 
+  function mStatus(x) { return x.marketplace ? (x.marketplace.status || 'unknown') : 'none'; }
+  function sStatus(x) { return x.kind === 'member' ? 'no store' : x.status; }
+  function canStore(x) { return x.kind === 'store' && x.status !== 'active'; }
+  function featuredLapsed(m) { return m && m.plan === 'featured' && m.expires_at && new Date(m.expires_at) < new Date(); }
+  function canMarket(x) { var m = x.marketplace; return !!m && m.status !== 'active' && (state.reactivatable || []).indexOf(m.status) !== -1 && !featuredLapsed(m); }
+
   function render() {
     var t = state.tenants;
-    var byStatus = {};
-    t.forEach(function (x) { byStatus[x.status] = (byStatus[x.status] || 0) + 1; });
-    var withM = t.filter(function (x) { return x.has_marketplace; }).length;
+    var stores = t.filter(function (x) { return x.kind === 'store'; });
+    var byStatus = {}, byM = {};
+    stores.forEach(function (x) { byStatus[x.status] = (byStatus[x.status] || 0) + 1; });
+    t.forEach(function (x) { var k = mStatus(x); byM[k] = (byM[k] || 0) + 1; });
+    var memberOnly = t.length - stores.length;
 
-    var tiles = [{ key: '', n: t.length, l: 'All stores' }];
-    Object.keys(byStatus).sort().forEach(function (s) { tiles.push({ key: 'status:' + s, n: byStatus[s], l: s, del: s === 'deleted' }); });
+    var tiles = [{ key: '', n: stores.length, l: 'All stores' }];
+    Object.keys(byStatus).sort().forEach(function (s) { tiles.push({ key: 'status:' + s, n: byStatus[s], l: 'Store ' + s, del: s === 'deleted' }); });
     if (state.marketplace.available) {
-      tiles.push({ key: 'm:yes', n: withM, l: 'With marketplace' });
-      tiles.push({ key: 'm:no', n: t.length - withM, l: 'Without marketplace' });
+      Object.keys(byM).sort().forEach(function (s) {
+        if (s === 'none') return;
+        tiles.push({ key: 'm:' + s, n: byM[s], l: 'Marketplace ' + s, del: s === 'deleted' || s === 'suspended' });
+      });
+      tiles.push({ key: 'm:none', n: byM.none || 0, l: 'Stores without marketplace' });
+      if (memberOnly) tiles.push({ key: 'status:no store', n: memberOnly, l: 'Marketplace only (no store)' });
     }
     $('tiles').innerHTML = tiles.map(function (x) {
       return '<div class="tile' + (x.del ? ' del' : '') + (state.tile === x.key ? ' active' : '') + '" data-key="' + esc(x.key) + '">' +
@@ -130,15 +142,22 @@
     }).join('');
 
     var sel = $('fStatus'), cur = sel.value;
-    sel.innerHTML = '<option value="">All statuses</option>' + Object.keys(byStatus).sort().map(function (s) {
-      return '<option value="' + esc(s) + '">' + esc(s) + ' (' + byStatus[s] + ')</option>';
+    var sOpts = Object.keys(byStatus).sort();
+    if (memberOnly) sOpts.push('no store');
+    sel.innerHTML = '<option value="">Store: any status</option>' + sOpts.map(function (s) {
+      return '<option value="' + esc(s) + '">Store: ' + esc(s) + ' (' + (s === 'no store' ? memberOnly : byStatus[s]) + ')</option>';
     }).join('');
     sel.value = cur;
-    $('fMarket').disabled = !state.marketplace.available;
+    var ms = $('fMarket'), mcur = ms.value;
+    ms.innerHTML = '<option value="">Marketplace: any</option>' + Object.keys(byM).sort().map(function (s) {
+      return '<option value="' + esc(s) + '">Marketplace: ' + esc(s === 'none' ? 'none (not listed)' : s) + ' (' + byM[s] + ')</option>';
+    }).join('');
+    ms.value = mcur;
+    ms.disabled = !state.marketplace.available;
 
     $('marketNote').textContent = state.marketplace.available
-      ? 'Marketplace listings read from table "' + state.marketplace.table + '" (' + state.marketplace.total + ' listings).'
-      : 'Marketplace report unavailable: marketplace listing table not found (set SA_MARKETPLACE_TABLE on the server).';
+      ? 'Marketplace memberships: ' + state.marketplace.total + ' (linked to a store by upgrade or by the same owner email). Pending / rejected listings are approved through the normal Marketplace approvals.'
+      : 'Marketplace data unavailable: ' + (state.marketplace.error || 'table not found');
     renderRows();
   }
 
@@ -147,46 +166,64 @@
     var st = $('fStatus').value;
     var mk = $('fMarket').value;
     var list = state.tenants.filter(function (x) {
-      if (st && x.status !== st) return false;
-      if (mk === 'yes' && !x.has_marketplace) return false;
-      if (mk === 'no' && x.has_marketplace) return false;
+      if (st && sStatus(x) !== st) return false;
+      if (mk && mStatus(x) !== mk) return false;
       if (!q) return true;
-      return [x.name, x.subdomain, x.owner_email, x.id].some(function (v) { return v && String(v).toLowerCase().indexOf(q) !== -1; });
+      var m = x.marketplace || {};
+      return [x.name, x.subdomain, x.owner_email, x.id, sStatus(x), m.business_name, m.email, m.status, m.plan].some(function (v) {
+        return v && String(v).toLowerCase().indexOf(q) !== -1;
+      });
     });
-    $('count').textContent = 'Showing ' + list.length + ' of ' + state.tenants.length + ' stores';
-    if (!list.length) { $('rows').innerHTML = '<tr><td colspan="6" class="small">No stores match.</td></tr>'; return; }
+    $('count').textContent = 'Showing ' + list.length + ' of ' + state.tenants.length + ' entries';
+    if (!list.length) { $('rows').innerHTML = '<tr><td colspan="6" class="small">Nothing matches.</td></tr>'; return; }
     $('rows').innerHTML = list.map(function (x) {
-      var m = x.has_marketplace
-        ? x.marketplace.map(function (l) { return '<span class="badge">' + esc(l.status || 'listed') + '</span>'; }).join(' ')
-        : '<span class="small">—</span>';
-      var del = x.status === 'deleted'
-        ? '<div class="small">Deleted ' + esc(fmtDate(x.deleted_at)) + (x.deleted_by_email ? ' by ' + esc(x.deleted_by_email) : '') + '</div>'
-        : '';
-      var action = x.status === 'deleted'
-        ? '<button class="restore" data-id="' + esc(x.id) + '" data-name="' + esc(x.name) + '">Restore</button>'
-        : '';
+      var m = x.marketplace;
+      var mCell = m
+        ? '<span class="badge ' + esc(m.status) + '">' + esc(m.status || '?') + '</span>' +
+          '<div class="small">' + esc(m.business_name || '') + (m.plan ? ' · ' + esc(m.plan) : '') +
+          (m.expires_at ? ' · until ' + esc(fmtDate(m.expires_at)) : '') + '</div>'
+        : '<span class="badge">none</span>' + (x.store_plan && /market|both/.test(x.store_plan) ? '<div class="small">store plan: ' + esc(x.store_plan) + '</div>' : '');
+      var sCell = x.kind === 'member'
+        ? '<span class="small">— marketplace only —</span>'
+        : '<span class="badge ' + esc(x.status) + '">' + esc(x.status) + '</span>' +
+          (x.status === 'deleted' ? '<div class="small">Deleted ' + esc(fmtDate(x.deleted_at)) + (x.deleted_by_email ? ' by ' + esc(x.deleted_by_email) : '') + '</div>' : '');
+      var btns = [];
+      var cs = canStore(x), cm = canMarket(x);
+      var data = ' data-tid="' + (x.kind === 'store' ? esc(x.id) : '') + '" data-mid="' + (m ? esc(m.id) : '') + '" data-name="' + esc(x.name) + '"';
+      if (cs) btns.push('<button class="restore" data-what="store"' + data + '>Activate store</button>');
+      if (cm) btns.push('<button class="restore" data-what="marketplace"' + data + '>Activate marketplace</button>');
+      if (cs && cm) btns.push('<button class="restore both" data-what="both"' + data + '>Activate both</button>');
+      if (m && m.status !== 'active' && !cm) btns.push('<div class="small">' + (featuredLapsed(m)
+        ? 'Marketplace: Featured period ended — use Renew'
+        : 'Marketplace: approve via Marketplace approvals') + '</div>');
       return '<tr><td><strong>' + esc(x.name) + '</strong><div class="small">' + esc(x.subdomain || '') + '</div></td>' +
-        '<td><span class="badge ' + esc(x.status) + '">' + esc(x.status) + '</span>' + del + '</td>' +
-        '<td>' + esc(x.owner_email || '') + '</td><td>' + m + '</td>' +
-        '<td>' + esc(fmtDate(x.created_at)) + '</td><td>' + action + '</td></tr>';
+        '<td>' + sCell + '</td><td>' + mCell + '</td>' +
+        '<td>' + esc(x.owner_email || '') + '</td>' +
+        '<td>' + esc(fmtDate(x.created_at)) + '</td><td class="acts">' + btns.join('') + '</td></tr>';
     }).join('');
   }
 
+  var WHAT_TEXT = { store: 'the store', marketplace: 'the marketplace listing', both: 'the store AND its marketplace listing' };
   async function restore(btn) {
-    var name = btn.getAttribute('data-name');
-    if (!confirm('Restore "' + name + '"?\n\nIt will be set back to "' + state.restoreStatus + '" and its store address will work again.')) return;
-    btn.disabled = true; btn.textContent = 'Restoring…';
+    var name = btn.getAttribute('data-name'), what = btn.getAttribute('data-what');
+    if (!confirm('Activate ' + WHAT_TEXT[what] + ' for "' + name + '"?')) return;
+    var label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Working…';
     try {
-      await api('/api/sa-stores/tenants/' + encodeURIComponent(btn.getAttribute('data-id')) + '/restore', { method: 'POST' });
+      await api('/api/sa-stores/activate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ what: what, tenant_id: btn.getAttribute('data-tid') || null, member_id: btn.getAttribute('data-mid') || null }),
+      });
       $('appMsg').className = 'msg ok';
-      $('appMsg').textContent = '"' + name + '" restored.';
+      $('appMsg').textContent = '"' + name + '": ' + WHAT_TEXT[what] + ' activated.';
       await load(true);
     } catch (e) {
-      btn.disabled = false; btn.textContent = 'Restore';
+      btn.disabled = false; btn.textContent = label;
       $('appMsg').className = 'msg err';
-      $('appMsg').textContent = 'Restore failed: ' + e.message + (e.detail ? ' — ' + e.detail : '');
+      $('appMsg').textContent = 'Activation failed: ' + (e.detail || e.message);
     }
   }
+
 
   function wire() {
     ['email', 'password', 'code'].forEach(function (id) {
@@ -233,6 +270,7 @@
       state.tile = key;
       $('fStatus').value = key.indexOf('status:') === 0 ? key.slice(7) : '';
       $('fMarket').value = key.indexOf('m:') === 0 ? key.slice(2) : '';
+      if ($('fStatus').value !== (key.indexOf('status:') === 0 ? key.slice(7) : '')) $('fStatus').value = '';
       render();
     });
     $('rows').addEventListener('click', function (ev) {

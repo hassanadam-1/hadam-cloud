@@ -20,9 +20,6 @@ const { createClient } = require('@supabase/supabase-js');
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://leodrmnlmbthyixehfve.supabase.co';
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ANON_KEY = process.env.SUPABASE_ANON_KEY;
-const MARKET_TABLES = process.env.SA_MARKETPLACE_TABLE
-  ? [process.env.SA_MARKETPLACE_TABLE]
-  : ['marketplace_listings', 'marketplace_members', 'marketplace_sellers', 'marketplace_stores'];
 const RESTORE_STATUS = process.env.SA_RESTORE_STATUS || 'active';
 
 let _admin = null;
@@ -174,30 +171,30 @@ async function fetchAll(table) {
   return out;
 }
 
-async function loadMarketplace() {
-  for (const table of MARKET_TABLES) {
-    try {
-      const rows = await fetchAll(table);
-      const sample = rows[0] || {};
-      const col = ['tenant_id', 'store_id', 'tenant'].find((c) => c in sample) || 'tenant_id';
-      const byTenant = {};
-      for (const r of rows) {
-        const tid = r[col];
-        if (tid == null) continue;
-        (byTenant[tid] = byTenant[tid] || []).push({
-          id: r.id,
-          status: r.status || r.approval_status || null,
-          tier: r.tier || r.plan || null,
-          name: r.name || r.title || r.business_name || null,
-        });
-      }
-      return { available: true, table, column: col, total: rows.length, byTenant };
-    } catch (_) {
-      // table does not exist or not readable — try the next candidate
-    }
-  }
-  return { available: false, table: null, byTenant: {} };
+const MEMBER_TABLE = process.env.SA_MARKETPLACE_TABLE || 'marketplace_members';
+// Marketplace statuses a superadmin may switch back to "active" directly.
+// pending / rejected must go through the normal Marketplace approval flow (payment-gated Featured tier).
+const MEMBER_REACTIVATABLE = ['suspended', 'expired', 'deleted', 'inactive', 'cancelled', 'disabled'];
+
+async function loadMembers() {
+  try { return { available: true, rows: await fetchAll(MEMBER_TABLE) }; }
+  catch (e) { return { available: false, rows: [], error: e.message }; }
 }
+async function loadMemberships() {
+  try { return await fetchAll('tenant_memberships'); } catch (_) { return []; }
+}
+function memberView(m, link) {
+  return {
+    id: m.id,
+    status: m.status || null,
+    plan: m.plan || null,
+    business_name: m.business_name || m.name || null,
+    email: m.email || null,
+    expires_at: m.subscription_expires_at || null,
+    link,
+  };
+}
+const STATUS_RANK = { active: 0, pending: 1, suspended: 2, expired: 3, deleted: 4, rejected: 5 };
 
 // Emails of owners / deleters, looked up in pages (projects have 265+ users).
 async function emailMap(ids) {
@@ -249,53 +246,162 @@ function checkSuperadmin(req, res) {
 }
 
 async function listTenants(req, res) {
-  const [tenants, market] = await Promise.all([fetchAll('tenants'), loadMarketplace()]);
+  const [tenants, members, memberships] = await Promise.all([fetchAll('tenants'), loadMembers(), loadMemberships()]);
   const ownerKeys = ['owner_id', 'owner_user_id', 'created_by', 'user_id'];
-  const emails = await emailMap(tenants.flatMap((t) => [pick(t, ownerKeys), t.deleted_by]));
+
+  // Owner user ids per store: tenant owner column + owner/admin memberships.
+  const ownersByTenant = {};
+  for (const t of tenants) { const o = pick(t, ownerKeys); ownersByTenant[t.id] = o ? [o] : []; }
+  for (const ms of memberships) {
+    const role = String(ms.role || '').toLowerCase();
+    if (ms.tenant_id && ms.user_id && (role === 'owner' || role === 'admin') && ownersByTenant[ms.tenant_id]) {
+      if (!ownersByTenant[ms.tenant_id].includes(ms.user_id)) ownersByTenant[ms.tenant_id].push(ms.user_id);
+    }
+  }
+  const allIds = Object.values(ownersByTenant).flat().concat(tenants.map((t) => t.deleted_by));
+  const emails = await emailMap(allIds);
+
+  // Owner emails per store (lowercase) and reverse lookup email -> stores.
+  const ownerEmails = {};
+  const storesByEmail = {};
+  for (const t of tenants) {
+    const set = new Set();
+    const direct = pick(t, ['owner_email', 'email']);
+    if (direct) set.add(String(direct).toLowerCase());
+    for (const uid of ownersByTenant[t.id]) if (emails[uid]) set.add(emails[uid].toLowerCase());
+    ownerEmails[t.id] = [...set];
+    for (const e of set) (storesByEmail[e] = storesByEmail[e] || []).push(t.id);
+  }
+
+  // Link marketplace memberships to stores: upgraded_to_tenant_id first, then same owner email.
+  const memberByTenant = {};
+  const unlinked = [];
+  for (const m of members.rows) {
+    let tid = null, link = null;
+    if (m.upgraded_to_tenant_id && ownersByTenant[m.upgraded_to_tenant_id]) { tid = m.upgraded_to_tenant_id; link = 'upgraded'; }
+    else {
+      const hits = storesByEmail[String(m.email || '').toLowerCase()] || [];
+      if (hits.length === 1) { tid = hits[0]; link = 'email'; }
+    }
+    if (!tid) { unlinked.push(m); continue; }
+    const cur = memberByTenant[tid];
+    const rank = (x) => (x.status in STATUS_RANK ? STATUS_RANK[x.status] : 9);
+    if (!cur || rank(m) < rank(cur.m)) memberByTenant[tid] = { m, link };
+  }
+
   const rows = tenants.map((t) => {
-    const listings = market.byTenant[t.id] || [];
-    const ownerId = pick(t, ownerKeys);
+    const mm = memberByTenant[t.id];
     return {
+      kind: 'store',
       id: t.id,
       name: pick(t, ['name', 'store_name', 'display_name', 'title']) || '(no name)',
       subdomain: pick(t, ['subdomain', 'slug', 'domain']),
       status: t.status || 'active',
-      owner_email: pick(t, ['owner_email', 'email']) || emails[ownerId] || null,
+      store_plan: t.plan || null,
+      owner_email: ownerEmails[t.id][0] || null,
       created_at: t.created_at || null,
       deleted_at: t.deleted_at || null,
       deleted_by_email: t.deleted_by ? emails[t.deleted_by] || t.deleted_by : null,
-      has_marketplace: listings.length > 0,
-      marketplace: listings,
+      marketplace: mm ? memberView(mm.m, mm.link) : null,
     };
   });
+  for (const m of unlinked) {
+    rows.push({
+      kind: 'member',
+      id: 'member:' + m.id,
+      name: m.business_name || m.name || '(no name)',
+      subdomain: null,
+      status: null,
+      store_plan: null,
+      owner_email: m.email || null,
+      created_at: m.created_at || null,
+      marketplace: memberView(m, null),
+    });
+  }
   rows.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
   sendJson(res, 200, {
     tenants: rows,
-    marketplace: { available: market.available, table: market.table, total: market.total || 0 },
-    restore_status: RESTORE_STATUS,
+    marketplace: { available: members.available, table: MEMBER_TABLE, total: members.rows.length, error: members.error || null },
+    reactivatable: MEMBER_REACTIVATABLE,
   });
 }
 
-async function restoreTenant(req, res, id) {
+async function audit(user, event, details) {
+  try {
+    await admin().from('auth_audit_log').insert({ event_type: event, user_id: user.id, email: user.email, details });
+  } catch (_) { /* best effort */ }
+}
+
+// Check (without changing anything) whether a store / membership can be activated.
+async function checkStore(id) {
   const { data: t, error } = await admin().from('tenants').select('*').eq('id', id).maybeSingle();
   if (error) throw error;
-  if (!t) return sendJson(res, 404, { error: 'store_not_found' });
-  if (t.status !== 'deleted') return sendJson(res, 409, { error: 'store_not_deleted', status: t.status });
+  if (!t) return { error: 'store_not_found', code: 404 };
+  if (t.status === 'active') return { error: 'store_already_active', code: 409 };
+  return { t };
+}
+async function checkMember(id) {
+  const { data: m, error } = await admin().from(MEMBER_TABLE).select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  if (!m) return { error: 'marketplace_not_found', code: 404 };
+  if (m.status === 'active') return { error: 'marketplace_already_active', code: 409 };
+  if (!MEMBER_REACTIVATABLE.includes(m.status)) {
+    return { error: 'marketplace_needs_approval', code: 409, detail: 'Status is "' + m.status + '" — approve it through the normal Marketplace approvals.' };
+  }
+  if (m.plan === 'featured' && m.subscription_expires_at && new Date(m.subscription_expires_at) < new Date()) {
+    return { error: 'marketplace_subscription_expired', code: 409, detail: 'Featured subscription ended ' + String(m.subscription_expires_at).slice(0, 10) + ' — use Renew so it is not expired again.' };
+  }
+  return { m };
+}
+
+async function activateStore(t) {
   const patch = { status: RESTORE_STATUS };
   if ('deleted_at' in t) patch.deleted_at = null;
   if ('deleted_by' in t) patch.deleted_by = null;
-  const { data: upd, error: uErr } = await admin()
-    .from('tenants').update(patch).eq('id', id).eq('status', 'deleted').select('*').maybeSingle();
-  if (uErr) throw uErr;
-  if (!upd) return sendJson(res, 409, { error: 'restore_conflict' });
-  try {
-    await admin().from('auth_audit_log').insert({
-      event_type: 'store_restored', user_id: req.saUser.id, email: req.saUser.email,
-      details: { tenant_id: id, subdomain: t.subdomain || null, restored_to: RESTORE_STATUS },
-    });
-  } catch (_) { /* best effort */ }
-  console.log(`[superadmin-stores] ${req.saUser.email} restored tenant ${id} (${t.subdomain || ''})`);
-  sendJson(res, 200, { ok: true, tenant: { id: upd.id, status: upd.status } });
+  const { data, error } = await admin().from('tenants').update(patch).eq('id', t.id).eq('status', t.status).select('*').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('store changed while activating — reload and try again');
+  return data;
+}
+async function activateMember(m) {
+  const patch = { status: 'active' };
+  if ('deleted_at' in m) patch.deleted_at = null;
+  if ('deleted_by' in m) patch.deleted_by = null;
+  const { data, error } = await admin().from(MEMBER_TABLE).update(patch).eq('id', m.id).eq('status', m.status).select('*').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('marketplace listing changed while activating — reload and try again');
+  return data;
+}
+
+// POST /api/sa-stores/activate  { what: 'store'|'marketplace'|'both', tenant_id, member_id }
+async function activate(req, res, body) {
+  const what = body.what;
+  if (!['store', 'marketplace', 'both'].includes(what)) return sendJson(res, 400, { error: 'bad_request' });
+  const wantStore = what !== 'marketplace';
+  const wantMember = what !== 'store';
+  if (wantStore && !body.tenant_id) return sendJson(res, 400, { error: 'store_missing' });
+  if (wantMember && !body.member_id) return sendJson(res, 400, { error: 'no_marketplace_listing' });
+
+  // Check everything first, so "both" never half-applies.
+  const s = wantStore ? await checkStore(body.tenant_id) : null;
+  if (s && s.error) return sendJson(res, s.code, { error: s.error, detail: s.detail });
+  const mm = wantMember ? await checkMember(body.member_id) : null;
+  if (mm && mm.error) return sendJson(res, mm.code, { error: mm.error, detail: mm.detail });
+
+  const out = {};
+  if (s) {
+    const t = await activateStore(s.t);
+    out.store = { id: t.id, status: t.status };
+    await audit(req.saUser, 'store_restored', { tenant_id: t.id, subdomain: s.t.subdomain || null, from: s.t.status, to: t.status });
+    console.log('[superadmin-stores] ' + req.saUser.email + ' activated store ' + t.id + ' (' + (s.t.subdomain || '') + ') from ' + s.t.status);
+  }
+  if (mm) {
+    const m = await activateMember(mm.m);
+    out.marketplace = { id: m.id, status: m.status };
+    await audit(req.saUser, 'marketplace_reactivated', { member_id: m.id, business_name: mm.m.business_name || null, from: mm.m.status, to: m.status });
+    console.log('[superadmin-stores] ' + req.saUser.email + ' activated marketplace member ' + m.id + ' (' + (mm.m.business_name || '') + ') from ' + mm.m.status);
+  }
+  sendJson(res, 200, Object.assign({ ok: true }, out));
 }
 
 /**
@@ -336,9 +442,14 @@ async function handle(req, res) {
     }
     if (req.method === 'POST' && url === '/api/sa-stores/email-code/send') { await sendCode(req, res); return true; }
     if (req.method === 'POST' && url === '/api/sa-stores/email-code/verify') { await verifyCode(req, res); return true; }
+    if (req.method === 'POST' && url === '/api/sa-stores/activate') {
+      const body = await readJsonBody(req);
+      if (await checkSuperadmin(req, res)) await activate(req, res, body);
+      return true;
+    }
     const m = url.match(/^\/api\/sa-stores\/tenants\/([^/]+)\/restore$/);
     if (req.method === 'POST' && m) {
-      if (await checkSuperadmin(req, res)) await restoreTenant(req, res, decodeURIComponent(m[1]));
+      if (await checkSuperadmin(req, res)) await activate(req, res, { what: 'store', tenant_id: decodeURIComponent(m[1]) });
       return true;
     }
     sendJson(res, 404, { error: 'not_found' });

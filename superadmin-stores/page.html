@@ -42,7 +42,12 @@
   .badge.deleted { background:#fbe7e5; color:var(--red); }
   .badge.suspended, .badge.cancelled, .badge.pending { background:#fff4dd; color:#8a5a00; }
   .small { font-size:12px; color:var(--muted); }
-  button.restore { background:var(--navy); color:#fff; border:0; padding:6px 12px; border-radius:6px; cursor:pointer; }
+  button.restore { background:var(--navy); color:#fff; border:0; padding:6px 10px; border-radius:6px; cursor:pointer; margin:0 6px 6px 0; font-size:13px; }
+  button.restore.both { background:var(--amber); color:var(--navy); font-weight:600; }
+  button.restore:disabled { opacity:.5; }
+  td.acts { min-width:170px; }
+  .badge.expired, .badge.rejected { background:#fbe7e5; color:var(--red); }
+  .badge.approved { background:#e3f5ec; color:var(--green); }
   .note { font-size:13px; color:var(--muted); margin:8px 0 0; }
   .count { font-size:13px; color:var(--muted); margin:6px 0 10px; }
 </style>
@@ -86,7 +91,7 @@
     <div class="tiles" id="tiles"></div>
     <div class="card">
       <div class="filters">
-        <input id="q" type="search" placeholder="Find a store — name, subdomain, owner email or ID">
+        <input id="q" type="search" placeholder="Find a store or marketplace listing — name, subdomain, email, status">
         <select id="fStatus"><option value="">All statuses</option></select>
         <select id="fMarket">
           <option value="">Marketplace: any</option>
@@ -97,7 +102,7 @@
       <div class="count" id="count"></div>
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Store</th><th>Status</th><th>Owner</th><th>Marketplace</th><th>Created</th><th></th></tr></thead>
+          <thead><tr><th>Store</th><th>Store status</th><th>Marketplace</th><th>Owner</th><th>Created</th><th>Actions</th></tr></thead>
           <tbody id="rows"></tbody>
         </table>
       </div>
