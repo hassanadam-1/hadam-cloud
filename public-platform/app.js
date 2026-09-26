@@ -1006,6 +1006,22 @@ async function createTenant() {
       }),
     });
     state.baseDomain = data.storeUrl.split('://')[1].split('.').slice(1).join('.');
+    if (data.pendingApproval) {
+      // 6th+ store for this account: show the pending-approval message right here,
+      // on the creation screen, and stop -- do not show the "store ready" panel or
+      // the live store link, since the store isn't live yet.
+      document.getElementById('resultContent').innerHTML = `
+        <div class="panel" style="max-width:480px;margin:60px auto;text-align:center;">
+          <h3>Pending approval: ${esc(data.tenant.name)}</h3>
+          <p style="color:var(--text-dim);font-size:14px;">
+            Your store has been created, but since this account already owns 5 or more
+            stores, it needs approval from the platform admin before it goes live.
+          </p>
+          <div class="hint">You will be notified once it is approved. No further action is needed from you right now.</div>
+        </div>`;
+      go('result');
+      return;
+    }
     // Previously this substituted a locally-computed link here, on the assumption
     // the server's own storeUrl (built from the real production domain) wouldn't
     // resolve during local development testing. That's no longer the right default:
