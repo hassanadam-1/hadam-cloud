@@ -259,6 +259,18 @@ async function notifySuperadminsOfContactMessage({ name, email, message }) {
     text: emailT(EMAIL_I18N, 'newContactMessageBody', lang)(name, email, message),
   }));
 }
+/** Notifies every superadmin when a store owner's 6th (or later) store needs manual approval before it can go live. Store ownership itself is unchanged — this only fires the notification and does not alter tenant_memberships. */
+async function notifySuperadminsOfPendingStore({ storeName, subdomain, ownerName, ownerEmail, storeCount, tenantId }) {
+  await notifyAllSuperadmins(() => ({
+    subject: `Store approval needed: ${storeName}`,
+    text: `${ownerName} (${ownerEmail}) just created store #${storeCount}, "${storeName}" (${subdomain}.${BASE_DOMAIN}).
+
+This account already owns 5 or more stores, so this one needs your approval before it goes live.
+
+Approve: PATCH /api/platform/tenants/${tenantId} { "status": "active" }
+Reject:  PATCH /api/platform/tenants/${tenantId} { "status": "rejected" }`,
+  }));
+}
 
 async function checkSubscriptionAlerts() {
   const sent = [];
@@ -1880,7 +1892,13 @@ route('POST', '/api/platform/tenants', { hostScope: 'platform' }, async (req, re
     }
 
     const client = supabaseForRequest(session.access_token);
-    const { data: tenantRow, error: tenantErr } = await client.from('tenants').insert({ subdomain: sub, name: storeName, plan: chosenPlan, tagline: (tagline || '').slice(0, 200) }).select().maybeSingle();
+    // Ownership is unchanged — tenant_memberships.user_id (adminUser.id) is still the
+    // one source of truth. This only COUNTS existing memberships to decide whether the
+    // new store needs Superadmin approval; it never touches how ownership is recorded.
+    const { data: ownedMemberships, error: ownedErr } = await supabaseAdmin().from('tenant_memberships').select('tenant_id').eq('user_id', adminUser.id).eq('role', 'admin');
+    if (ownedErr) return send(res, 500, { error: ownedErr.message });
+    const needsApproval = (ownedMemberships || []).length >= 5;
+    const { data: tenantRow, error: tenantErr } = await client.from('tenants').insert({ subdomain: sub, name: storeName, plan: chosenPlan, tagline: (tagline || '').slice(0, 200), status: needsApproval ? 'pending_admin_approval' : 'active' }).select().maybeSingle();
     if (tenantErr) return send(res, 400, { error: tenantErr.message });
     if (!tenantRow) return send(res, 500, { error: apiT('storeCreationFailed', reqLang(req)) });
     const { error: memberErr } = await client.from('tenant_memberships').insert({ user_id: adminUser.id, tenant_id: tenantRow.id, role: 'admin' });
@@ -1889,18 +1907,20 @@ route('POST', '/api/platform/tenants', { hostScope: 'platform' }, async (req, re
       const { error: subErr } = await client.from('subscriptions').insert({ tenant_id: tenantRow.id, plan_id: planId, expiry_date: new Date(Date.now() + THIRTY_DAYS_MS).toISOString().slice(0, 10), payment_status: 'paid' });
       if (subErr) console.error('[subscription insert error]', subErr.message);
     }
+    if (needsApproval) {
+      notifySuperadminsOfPendingStore({ storeName, subdomain: sub, ownerName: adminName, ownerEmail: adminEmail, storeCount: (ownedMemberships || []).length + 1, tenantId: tenantRow.id }).catch(e => console.error('[pending-store-notify] failed:', e.message));
+    }
     return send(res, 201, {
       tenant: rowToTenant(tenantRow), storeUrl: `https://${sub}.${BASE_DOMAIN}`,
       user: { id: adminUser.id, name: adminName, email: adminEmail, role: 'admin', tenantId: tenantRow.id }, token: session.access_token,
+      pendingApproval: needsApproval,
     });
   }
 
   if (findTenantBySubdomain(sub)) return send(res, 409, { error: apiT('subdomainTaken', reqLang(req)) });
   const tier = SUBSCRIPTION_TIERS[chosenTier] ? chosenTier : 'starter';
-  const existingStore = db.tenants.find(t => t.status === 'active' && db.users.some(u => u.tenantId === t.id && u.role === 'admin' && u.email.toLowerCase() === adminEmail.toLowerCase()));
-  if (existingStore) {
-    return send(res, 409, { error: `You already have a store (${existingStore.name}, at ${existingStore.subdomain}.${BASE_DOMAIN}) registered with this email. Log in there to manage it, or use a different email to create another store.` });
-  }
+  const ownedStoreCount = db.tenants.filter(t => (t.status === 'active' || t.status === 'pending_admin_approval') && db.users.some(u => u.tenantId === t.id && u.role === 'admin' && u.email.toLowerCase() === adminEmail.toLowerCase())).length;
+  const needsApproval = ownedStoreCount >= 5;
   // Starter is free — no payment step needed. A paid tier (Professional/Enterprise) requires a
   // simulated card, same success/decline pattern as checkout (all-zero card = decline), and the
   // store is never created if that payment fails.
@@ -1912,7 +1932,7 @@ route('POST', '/api/platform/tenants', { hostScope: 'platform' }, async (req, re
     const paymentSucceeded = cardDigits.replace(/0/g, '').length > 0;
     if (!paymentSucceeded) return send(res, 402, { error: apiT('paymentDeclinedTryDifferent', reqLang(req)) });
   }
-  const tenant = { id: newId('t'), subdomain: sub, name: storeName, status: 'active', plan: chosenPlan, subscriptionTier: tier, tagline: (tagline || '').slice(0, 200), createdAt: Date.now(), subscriptionExpiresAt: Date.now() + THIRTY_DAYS_MS };
+  const tenant = { id: newId('t'), subdomain: sub, name: storeName, status: needsApproval ? 'pending_admin_approval' : 'active', plan: chosenPlan, subscriptionTier: tier, tagline: (tagline || '').slice(0, 200), createdAt: Date.now(), subscriptionExpiresAt: Date.now() + THIRTY_DAYS_MS };
   db.tenants.push(tenant);
   // Tenants start with NO categories or products — infrastructure only.
   // The tenant's own admin defines their catalog from their dashboard,
@@ -1920,15 +1940,19 @@ route('POST', '/api/platform/tenants', { hostScope: 'platform' }, async (req, re
   const admin = { id: newId('u'), name: adminName, email: adminEmail, passwordHash: hashPassword(adminPassword), role: 'admin', tenantId: tenant.id, createdAt: Date.now() };
   db.users.push(admin);
   await persist();
+  if (needsApproval) {
+    notifySuperadminsOfPendingStore({ storeName, subdomain: sub, ownerName: adminName, ownerEmail: adminEmail, storeCount: ownedStoreCount + 1, tenantId: tenant.id }).catch(e => console.error('[pending-store-notify] failed:', e.message));
+  }
   send(res, 201, {
     tenant, storeUrl: `https://${sub}.${BASE_DOMAIN}`,
     user: publicUser(admin), token: signToken({ sub: admin.id, role: admin.role, tenantId: admin.tenantId }),
+    pendingApproval: needsApproval,
   });
 });
 
 route('PATCH', '/api/platform/tenants/:id', { hostScope: 'platform', auth: true, roles: ['superadmin'] }, async (req, res, params, body) => {
   if (AUTH_DRIVER === 'supabase') {
-    if (!body.status || !['active', 'suspended'].includes(body.status)) {
+    if (!body.status || !['active', 'suspended', 'rejected'].includes(body.status)) {
       const { data: row } = await supabaseAdmin().from('tenants').select('*').eq('id', params.id).maybeSingle();
       if (!row) return send(res, 404, { error: apiT('tenantNotFound', reqLang(req)) });
       return send(res, 200, { tenant: rowToTenant(row) });
@@ -1940,7 +1964,7 @@ route('PATCH', '/api/platform/tenants/:id', { hostScope: 'platform', auth: true,
   }
   const tenant = db.tenants.find(t => t.id === params.id);
   if (!tenant) return send(res, 404, { error: apiT('tenantNotFound', reqLang(req)) });
-  if (body.status && ['active', 'suspended'].includes(body.status)) tenant.status = body.status;
+  if (body.status && ['active', 'suspended', 'rejected'].includes(body.status)) tenant.status = body.status;
   await persist();
   send(res, 200, { tenant });
 });
@@ -6441,7 +6465,7 @@ const server = http.createServer(async (req, res) => {
 
   const hostCtx = resolveHost(req.headers.host);
   const tenant = hostCtx.isPlatform ? null : await findTenantBySubdomainAsync(hostCtx.subdomain);
-  const unknownStore = !hostCtx.isPlatform && (!tenant || tenant.status === 'suspended' || tenant.status === 'deleted');
+  const unknownStore = !hostCtx.isPlatform && (!tenant || tenant.status === 'suspended' || tenant.status === 'deleted' || tenant.status === 'pending_admin_approval' || tenant.status === 'rejected');
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (req.method === 'GET' && url.pathname.startsWith('/uploads/')) {
