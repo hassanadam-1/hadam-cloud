@@ -1862,10 +1862,7 @@ route('POST', '/api/platform/tenants', { hostScope: 'platform' }, async (req, re
     const { data: existingTenant } = await supabaseAnon.from('tenants').select('id').eq('subdomain', sub).maybeSingle();
     if (existingTenant) return send(res, 409, { error: apiT('subdomainTaken', reqLang(req)) });
 
-    // One Hadam-wide identity: if this email already has an account (they're a
-    // customer somewhere, or run another store), sign them in with the password
-    // given here rather than creating a second identity — that's the same
-    // account claiming a new store, not a new person.
+    // One Hadam-wide identity: reuse the existing account when the email already belongs to a user.
     let session, adminUser;
     try {
       const result = await authSupabase.register(adminEmail, adminPassword, adminName);
@@ -1891,24 +1888,38 @@ route('POST', '/api/platform/tenants', { hostScope: 'platform' }, async (req, re
       if (cardDigits.replace(/0/g, '').length === 0) return send(res, 402, { error: apiT('paymentDeclinedTryDifferent', reqLang(req)) });
     }
 
-    const client = supabaseForRequest(session.access_token);
-    // Ownership is unchanged — tenant_memberships.user_id (adminUser.id) is still the
-    // one source of truth. This only COUNTS existing memberships to decide whether the
-    // new store needs Superadmin approval; it never touches how ownership is recorded.
+    // STORE CREATION LIMIT: 5 stores self-service, 6th+ needs Superadmin approval.
+    // tenant_memberships.user_id + role=admin remains the ownership source of truth.
     const { data: ownedMemberships, error: ownedErr } = await supabaseAdmin().from('tenant_memberships').select('tenant_id').eq('user_id', adminUser.id).eq('role', 'admin');
     if (ownedErr) return send(res, 500, { error: ownedErr.message });
-    const needsApproval = (ownedMemberships || []).length >= 5;
+    const ownedTenantIds = (ownedMemberships || []).map(m => m.tenant_id);
+    let ownedStoreCount = 0;
+    if (ownedTenantIds.length > 0) {
+      const { data: ownedTenants, error: ownedTenantsErr } = await supabaseAdmin().from('tenants').select('id, status').in('id', ownedTenantIds);
+      if (ownedTenantsErr) return send(res, 500, { error: ownedTenantsErr.message });
+      // Active/suspended/pending stores count toward the limit; deleted/rejected ones don't.
+      ownedStoreCount = (ownedTenants || []).filter(t => ['active', 'suspended', 'pending_admin_approval'].includes(t.status)).length;
+    }
+    const needsApproval = ownedStoreCount >= 5;
+
+    // Scoped to the signed-in owner's own session — performs the actual inserts below.
+    const client = supabaseForRequest(session.access_token);
     const { data: tenantRow, error: tenantErr } = await client.from('tenants').insert({ subdomain: sub, name: storeName, plan: chosenPlan, tagline: (tagline || '').slice(0, 200), status: needsApproval ? 'pending_admin_approval' : 'active' }).select().maybeSingle();
     if (tenantErr) return send(res, 400, { error: tenantErr.message });
     if (!tenantRow) return send(res, 500, { error: apiT('storeCreationFailed', reqLang(req)) });
+
+    // Ownership is recorded immediately even when the store is pending.
     const { error: memberErr } = await client.from('tenant_memberships').insert({ user_id: adminUser.id, tenant_id: tenantRow.id, role: 'admin' });
-    if (memberErr) return send(res, 400, { error: memberErr.message });
+    if (memberErr) {
+      await supabaseAdmin().from('tenants').delete().eq('id', tenantRow.id); // prevent an orphan tenant
+      return send(res, 400, { error: memberErr.message });
+    }
     if (planId) {
       const { error: subErr } = await client.from('subscriptions').insert({ tenant_id: tenantRow.id, plan_id: planId, expiry_date: new Date(Date.now() + THIRTY_DAYS_MS).toISOString().slice(0, 10), payment_status: 'paid' });
       if (subErr) console.error('[subscription insert error]', subErr.message);
     }
     if (needsApproval) {
-      notifySuperadminsOfPendingStore({ storeName, subdomain: sub, ownerName: adminName, ownerEmail: adminEmail, storeCount: (ownedMemberships || []).length + 1, tenantId: tenantRow.id }).catch(e => console.error('[pending-store-notify] failed:', e.message));
+      notifySuperadminsOfPendingStore({ storeName, subdomain: sub, ownerName: adminName, ownerEmail: adminEmail, storeCount: ownedStoreCount + 1, tenantId: tenantRow.id }).catch(e => console.error('[pending-store-notify] failed:', e.message));
     }
     return send(res, 201, {
       tenant: rowToTenant(tenantRow), storeUrl: `https://${sub}.${BASE_DOMAIN}`,
@@ -1917,13 +1928,12 @@ route('POST', '/api/platform/tenants', { hostScope: 'platform' }, async (req, re
     });
   }
 
+  // FALLBACK / LOCAL AUTH DRIVER — same rule: first 5 stores active, 6th+ pending_admin_approval.
   if (findTenantBySubdomain(sub)) return send(res, 409, { error: apiT('subdomainTaken', reqLang(req)) });
   const tier = SUBSCRIPTION_TIERS[chosenTier] ? chosenTier : 'starter';
-  const ownedStoreCount = db.tenants.filter(t => (t.status === 'active' || t.status === 'pending_admin_approval') && db.users.some(u => u.tenantId === t.id && u.role === 'admin' && u.email.toLowerCase() === adminEmail.toLowerCase())).length;
+  const ownerEmail = String(adminEmail || '').trim().toLowerCase();
+  const ownedStoreCount = db.tenants.filter(t => ['active', 'suspended', 'pending_admin_approval'].includes(t.status) && db.users.some(u => u.tenantId === t.id && u.role === 'admin' && String(u.email || '').toLowerCase() === ownerEmail)).length;
   const needsApproval = ownedStoreCount >= 5;
-  // Starter is free — no payment step needed. A paid tier (Professional/Enterprise) requires a
-  // simulated card, same success/decline pattern as checkout (all-zero card = decline), and the
-  // store is never created if that payment fails.
   const tierFee = SUBSCRIPTION_TIERS[tier].monthlyFee;
   if (tierFee > 0) {
     const cardFormatError = validateFullCard(card, reqLang(req));
@@ -1934,9 +1944,6 @@ route('POST', '/api/platform/tenants', { hostScope: 'platform' }, async (req, re
   }
   const tenant = { id: newId('t'), subdomain: sub, name: storeName, status: needsApproval ? 'pending_admin_approval' : 'active', plan: chosenPlan, subscriptionTier: tier, tagline: (tagline || '').slice(0, 200), createdAt: Date.now(), subscriptionExpiresAt: Date.now() + THIRTY_DAYS_MS };
   db.tenants.push(tenant);
-  // Tenants start with NO categories or products — infrastructure only.
-  // The tenant's own admin defines their catalog from their dashboard,
-  // constrained to what their chosen plan allows (see category creation).
   const admin = { id: newId('u'), name: adminName, email: adminEmail, passwordHash: hashPassword(adminPassword), role: 'admin', tenantId: tenant.id, createdAt: Date.now() };
   db.users.push(admin);
   await persist();
@@ -1951,12 +1958,16 @@ route('POST', '/api/platform/tenants', { hostScope: 'platform' }, async (req, re
 });
 
 route('PATCH', '/api/platform/tenants/:id', { hostScope: 'platform', auth: true, roles: ['superadmin'] }, async (req, res, params, body) => {
+  // Approve a pending 6th+ store: { "status": "active" }. Reject it: { "status": "rejected" }.
   if (AUTH_DRIVER === 'supabase') {
     if (!body.status || !['active', 'suspended', 'rejected'].includes(body.status)) {
       const { data: row } = await supabaseAdmin().from('tenants').select('*').eq('id', params.id).maybeSingle();
       if (!row) return send(res, 404, { error: apiT('tenantNotFound', reqLang(req)) });
       return send(res, 200, { tenant: rowToTenant(row) });
     }
+    const { data: existingTenant, error: existingErr } = await supabaseAdmin().from('tenants').select('id, status').eq('id', params.id).maybeSingle();
+    if (existingErr) return send(res, 500, { error: existingErr.message });
+    if (!existingTenant) return send(res, 404, { error: apiT('tenantNotFound', reqLang(req)) });
     const { data: row, error } = await supabaseAdmin().from('tenants').update({ status: body.status }).eq('id', params.id).select().maybeSingle();
     if (error) return send(res, 400, { error: error.message });
     if (!row) return send(res, 404, { error: apiT('tenantNotFound', reqLang(req)) });
@@ -1969,14 +1980,6 @@ route('PATCH', '/api/platform/tenants/:id', { hostScope: 'platform', auth: true,
   send(res, 200, { tenant });
 });
 
-/**
- * Superadmin-only permanent store removal. Distinct from the store owner's own
- * DELETE /api/admin/store (password-confirmed self-delete) — this is for the
- * platform operator to remove ANY store, confirmed by re-typing its exact name
- * instead of a password the superadmin doesn't have. Soft-deletes the tenant;
- * the existing unknownStore check already treats 'deleted' the same as
- * 'suspended' — the store becomes fully unreachable for its own clients/staff.
- */
 route('DELETE', '/api/platform/tenants/:id', { hostScope: 'platform', auth: true, roles: ['superadmin'] }, async (req, res, params, body, query, user) => {
   const confirmName = ((body && body.confirmName) || '').trim();
   if (AUTH_DRIVER === 'supabase') {
