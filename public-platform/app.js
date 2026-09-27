@@ -1172,7 +1172,18 @@ async function renderSuper() {
   if (!state.user) { el.innerHTML = `<div class="empty">${t('logInAsSuperadmin')}</div>`; return; }
   const { tenants, baseDomain } = await api('/api/platform/tenants');
   state.baseDomain = baseDomain;
-  el.innerHTML = `<h2 class="section-title">${t('allTenants')}${helpIcon('tenantMgmt', { what: 'helpTenantMgmtWhat', why: 'helpTenantMgmtWhy', next: 'helpTenantMgmtNext', errors: 'helpTenantMgmtErrors' })}</h2>
+  el.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;">
+      <button class="chip superTabBtn ${(state.superActiveTab || 'tenants') === 'tenants' ? 'active' : ''}" data-tab="tenants" onclick="switchSuperTab('tenants')">${t('allTenants')}</button>
+      <button class="chip superTabBtn ${(state.superActiveTab || 'tenants') === 'contact' ? 'active' : ''}" data-tab="contact" onclick="switchSuperTab('contact')">${t('contactMessagesTitle') || 'Contact form messages'}</button>
+      <button class="chip superTabBtn ${(state.superActiveTab || 'tenants') === 'security' ? 'active' : ''}" data-tab="security" onclick="switchSuperTab('security')">${t('platformSecurityAccessTitle')}</button>
+      <button class="chip superTabBtn ${(state.superActiveTab || 'tenants') === 'account' ? 'active' : ''}" data-tab="account" onclick="switchSuperTab('account')">${t('myAccountSecurityTitle')}</button>
+      <button class="chip superTabBtn ${(state.superActiveTab || 'tenants') === 'manual' ? 'active' : ''}" data-tab="manual" onclick="switchSuperTab('manual')">${t('technicalManualTitle') || 'Technical Manual'}</button>
+      <button class="chip superTabBtn ${(state.superActiveTab || 'tenants') === 'audit' ? 'active' : ''}" data-tab="audit" onclick="switchSuperTab('audit')">${t('auditLogTitle') || 'Security audit log'}</button>
+      <button class="chip superTabBtn ${(state.superActiveTab || 'tenants') === 'marketplace' ? 'active' : ''}" data-tab="marketplace" onclick="switchSuperTab('marketplace')">${t('marketplaceApplicationsTitle')}</button>
+      <button class="chip superTabBtn ${(state.superActiveTab || 'tenants') === 'pricing' ? 'active' : ''}" data-tab="pricing" onclick="switchSuperTab('pricing')">${t('pricingPlansTitle') || 'Store & marketplace pricing'}</button>
+    </div>
+    <div class="superTabPane" id="superTab-tenants" data-tab="tenants" style="display:${(state.superActiveTab || 'tenants') === 'tenants' ? '' : 'none'}"><h2 class="section-title">${t('allTenants')}${helpIcon('tenantMgmt', { what: 'helpTenantMgmtWhat', why: 'helpTenantMgmtWhy', next: 'helpTenantMgmtNext', errors: 'helpTenantMgmtErrors' })}</h2>
     <table><thead><tr><th>${t('store')}</th><th>${t('plan')}</th><th>${t('subdomainLabel')}</th><th>${t('revenue')}</th><th>${t('products')}</th><th>${t('orders')}</th><th>${t('users')}</th><th>${t('status')}</th><th></th><th></th></tr></thead><tbody>
     ${tenants.map(tenant => `<tr>
       <td>${esc(tenant.name)}</td><td>${planLabel(tenant.plan)}</td><td><span style="font-family:var(--font-mono)">${esc(tenant.subdomain)}.${baseDomain}</span></td>
@@ -1181,10 +1192,12 @@ async function renderSuper() {
       <td><button class="btn ghost sm" onclick="toggleTenant('${tenant.id}','${tenant.status}')">${tenant.status === 'active' ? t('suspend') : t('activate')}</button></td>
       <td><button class="btn ghost sm" style="color:#e5484d;" onclick="deleteTenant('${tenant.id}', decodeURIComponent('${encodeURIComponent(tenant.name)}'))"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-inline-end:4px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>${t('deleteTenantBtn') || 'Delete'}</button></td>
     </tr>`).join('')}</tbody></table>
-    <h2 class="section-title" style="margin-top:32px;">${t('contactMessagesTitle') || 'Contact form messages'}${helpIcon('superContactMessages', { what: 'helpSuperContactWhat', why: 'helpSuperContactWhy', next: 'helpSuperContactNext' })}</h2>
+  </div>
+    <div class="superTabPane" id="superTab-contact" data-tab="contact" style="display:${(state.superActiveTab || 'tenants') === 'contact' ? '' : 'none'}"><h2 class="section-title" style="margin-top:32px;">${t('contactMessagesTitle') || 'Contact form messages'}${helpIcon('superContactMessages', { what: 'helpSuperContactWhat', why: 'helpSuperContactWhy', next: 'helpSuperContactNext' })}</h2>
     <p class="hint" style="max-width:640px;">${t('contactMessagesHint') || 'Messages submitted through the public Contact form.'}</p>
     <div id="contactMessagesContainer">${t('loading')}</div>
-    <h2 class="section-title" style="margin-top:32px;">${t('platformSecurityAccessTitle')}</h2>
+  </div>
+    <div class="superTabPane" id="superTab-security" data-tab="security" style="display:${(state.superActiveTab || 'tenants') === 'security' ? '' : 'none'}"><h2 class="section-title" style="margin-top:32px;">${t('platformSecurityAccessTitle')}</h2>
     <p class="hint" style="max-width:640px;">${t('platformSecurityAccessHint')}</p>
     <table style="max-width:640px;font-size:13.5px;">
       <tbody>
@@ -1196,7 +1209,8 @@ async function renderSuper() {
         <tr><td style="padding:6px 0;color:var(--text-dim);">${t('smSettingPerStoreAccess')}</td><td style="text-align:right;"><span class="status-pill success">${t('smManagedInApp')}</span></td></tr>
       </tbody>
     </table>
-    <h2 class="section-title" style="margin-top:32px;">${t('myAccountSecurityTitle')}${helpIcon('superOwnMfa', { what: 'helpSuperOwnMfaWhat', why: 'helpSuperOwnMfaWhy', next: 'helpSuperOwnMfaNext', rules: 'helpSuperOwnMfaRules' })}</h2>
+  </div>
+    <div class="superTabPane" id="superTab-account" data-tab="account" style="display:${(state.superActiveTab || 'tenants') === 'account' ? '' : 'none'}"><h2 class="section-title" style="margin-top:32px;">${t('myAccountSecurityTitle')}${helpIcon('superOwnMfa', { what: 'helpSuperOwnMfaWhat', why: 'helpSuperOwnMfaWhy', next: 'helpSuperOwnMfaNext', rules: 'helpSuperOwnMfaRules' })}</h2>
     <div id="superMfaStatusContainer" style="max-width:400px;">${t('loading')}</div>
     <div style="max-width:400px;margin-top:16px;">
       <label style="font-weight:600;">${t('emailOtpSectionTitle') || 'Email verification code'}</label>
@@ -1215,11 +1229,13 @@ async function renderSuper() {
       <button class="btn sm secondary" onclick="superResetMfaByEmail()">${t('resetMfaBtn') || 'Reset MFA'}</button>
       <div id="resetMfaMsg" style="margin-top:8px;"></div>
     </div>
-    <h2 class="section-title" style="margin-top:32px;">${t('technicalManualTitle') || 'Technical Manual'}</h2>
+  </div>
+    <div class="superTabPane" id="superTab-manual" data-tab="manual" style="display:${(state.superActiveTab || 'tenants') === 'manual' ? '' : 'none'}"><h2 class="section-title" style="margin-top:32px;">${t('technicalManualTitle') || 'Technical Manual'}</h2>
     <p class="hint" style="max-width:640px;">${t('technicalManualSuperadminHint') || 'Architecture, roles, database structure, APIs, workflows, and troubleshooting — for Superadmins and technical support only. This is not shown anywhere in the user-facing Help section.'}</p>
     <button class="btn" onclick="downloadTechnicalManual()">${t('downloadTechnicalManualBtn') || 'Download Technical Manual (.docx)'}</button>
     <div id="techManualMsg" class="hint" style="color:var(--danger,#e57373);"></div>
-    <h2 class="section-title" style="margin-top:32px;">${t('auditLogTitle') || 'Security audit log'}${helpIcon('superAuditLog', { why: 'helpSuperAuditLogWhy', next: 'helpSuperAuditLogNext' })}</h2>
+  </div>
+    <div class="superTabPane" id="superTab-audit" data-tab="audit" style="display:${(state.superActiveTab || 'tenants') === 'audit' ? '' : 'none'}"><h2 class="section-title" style="margin-top:32px;">${t('auditLogTitle') || 'Security audit log'}${helpIcon('superAuditLog', { why: 'helpSuperAuditLogWhy', next: 'helpSuperAuditLogNext' })}</h2>
     <p class="hint" style="max-width:640px;">${t('auditLogHint') || 'A record of security-relevant events across every store — logins, MFA changes, password resets, and admin actions.'}</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;max-width:900px;">
       <input id="auditLogEmailFilter" placeholder="${t('auditLogEmailFilterPlaceholder') || 'Filter by email'}" style="max-width:220px;">
@@ -1235,9 +1251,11 @@ async function renderSuper() {
       <button class="btn sm secondary" onclick="renderAuditLog(0)">${t('auditLogApplyFilters') || 'Apply filters'}</button>
     </div>
     <div id="auditLogContainer">${t('loading')}</div>
-    <h2 class="section-title" style="margin-top:32px;">${t('marketplaceApplicationsTitle')}</h2>
+  </div>
+    <div class="superTabPane" id="superTab-marketplace" data-tab="marketplace" style="display:${(state.superActiveTab || 'tenants') === 'marketplace' ? '' : 'none'}"><h2 class="section-title" style="margin-top:32px;">${t('marketplaceApplicationsTitle')}</h2>
     <div id="marketplaceApplicationsList">${t('loading')}</div>
-    <h2 class="section-title" style="margin-top:32px;">${t('pricingPlansTitle') || 'Store & marketplace pricing'}</h2>
+  </div>
+    <div class="superTabPane" id="superTab-pricing" data-tab="pricing" style="display:${(state.superActiveTab || 'tenants') === 'pricing' ? '' : 'none'}"><h2 class="section-title" style="margin-top:32px;">${t('pricingPlansTitle') || 'Store & marketplace pricing'}</h2>
     <p class="hint" style="max-width:640px;">${t('pricingPlansHint') || 'Manage the plans stores can subscribe to. Changing a price only affects new and future subscriptions -- plans already purchased keep their original pricing.'}</p>
     <div id="pricingPlansContainer">${t('loading')}</div>
     <div class="panel" style="max-width:520px;margin-top:16px;">
@@ -1255,6 +1273,7 @@ async function renderSuper() {
       <div id="pricingPlanFormMsg"></div>
       <button class="btn full" onclick="submitPlanForm()">${t('savePlanBtn') || 'Save plan'}</button>
       <button class="btn ghost sm" style="margin-top:8px;" onclick="resetPlanForm()">${t('cancelEditBtn') || 'Cancel / new plan'}</button>
+  </div>
     </div>`;
   renderSuperMfaStatus();
   renderSuperEmailOtpStatus();
@@ -1552,6 +1571,11 @@ async function reviewMarketplaceMember(id, action) {
     await api(`/api/platform/marketplace-members/${id}/review`, { method: 'POST', body: JSON.stringify({ action, note }) });
     renderMarketplaceApplications();
   } catch (e) { alert(e.message); }
+}
+function switchSuperTab(name) {
+  state.superActiveTab = name;
+  document.querySelectorAll('.superTabPane').forEach(function (el) { el.style.display = el.dataset.tab === name ? '' : 'none'; });
+  document.querySelectorAll('.superTabBtn').forEach(function (btn) { btn.classList.toggle('active', btn.dataset.tab === name); });
 }
 async function toggleTenant(id, currentStatus) {
   await api(`/api/platform/tenants/${id}`, { method: 'PATCH', body: JSON.stringify({ status: currentStatus === 'active' ? 'suspended' : 'active' }) });
