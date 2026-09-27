@@ -1980,6 +1980,85 @@ route('PATCH', '/api/platform/tenants/:id', { hostScope: 'platform', auth: true,
   send(res, 200, { tenant });
 });
 
+/** Validates and normalizes plan fields against the real 'plans' table shape
+ * (db/schema.sql). Only fields that exist on that table are ever written -- this
+ * deliberately does not introduce any second/parallel pricing schema. Returns
+ * { error } or { patch }. */
+function validatePlanInput(body, { requireName }) {
+  const patch = {};
+  if (requireName || body.name !== undefined) {
+    const name = String(body.name || '').trim();
+    if (!name) return { error: 'name is required.' };
+    patch.name = name;
+  }
+  for (const [field, label] of [['monthly_price', 'Monthly price'], ['yearly_price', 'Yearly price']]) {
+    if (body[field] !== undefined) {
+      const n = Number(body[field]);
+      if (!Number.isFinite(n) || n < 0) return { error: `${label} must be a number >= 0.` };
+      patch[field] = Math.round(n * 100) / 100;
+    }
+  }
+  if (body.commission_rate !== undefined) {
+    const n = Number(body.commission_rate);
+    if (!Number.isFinite(n) || n < 0 || n > 1) return { error: 'commission_rate must be a number between 0 and 1 (e.g. 0.15 for 15%).' };
+    patch.commission_rate = n;
+  }
+  for (const field of ['max_products', 'max_storage_mb']) {
+    if (body[field] !== undefined) {
+      if (body[field] === null || body[field] === '') { patch[field] = null; continue; }
+      const n = Number(body[field]);
+      if (!Number.isInteger(n) || n < 0) return { error: `${field} must be a non-negative whole number, or null for unlimited.` };
+      patch[field] = n;
+    }
+  }
+  if (body.staff_accounts !== undefined) {
+    const n = Number(body.staff_accounts);
+    if (!Number.isInteger(n) || n < 1) return { error: 'staff_accounts must be a whole number >= 1.' };
+    patch.staff_accounts = n;
+  }
+  for (const field of ['marketplace_allowed', 'custom_domain', 'active']) {
+    if (body[field] !== undefined) patch[field] = !!body[field];
+  }
+  return { patch };
+}
+
+/** Superadmin plan/pricing management -- lists all plans (including inactive) directly from
+ * the real 'plans' table, the same table store creation and renewal already read from.
+ * Local/legacy driver has no in-memory plans store, so this is Supabase-only for now. */
+route('GET', '/api/platform/plans', { hostScope: 'platform', auth: true, roles: ['superadmin'] }, async (req, res) => {
+  if (AUTH_DRIVER !== 'supabase') return send(res, 501, { error: 'Plan management requires the Supabase driver.' });
+  const { data, error } = await supabaseAdmin().from('plans').select('*').order('monthly_price', { ascending: true });
+  if (error) return send(res, 500, { error: error.message });
+  send(res, 200, { plans: data || [] });
+});
+
+/** Creates a new plan directly in the real 'plans' table. Only touches that table --
+ * existing subscriptions rows are never written to by this route. */
+route('POST', '/api/platform/plans', { hostScope: 'platform', auth: true, roles: ['superadmin'] }, async (req, res, params, body) => {
+  if (AUTH_DRIVER !== 'supabase') return send(res, 501, { error: 'Plan management requires the Supabase driver.' });
+  const { error: validationError, patch } = validatePlanInput(body, { requireName: true });
+  if (validationError) return send(res, 400, { error: validationError });
+  const { data, error } = await supabaseAdmin().from('plans').insert(patch).select().maybeSingle();
+  if (error) return send(res, 400, { error: error.message });
+  send(res, 201, { plan: data });
+});
+
+/** Edits an existing plan, including activate/deactivate via 'active'. Only edits the
+ * plans row itself -- never touches existing subscriptions rows, so this can't retroactively
+ * modify any store's already-recorded subscription history. */
+route('PATCH', '/api/platform/plans/:id', { hostScope: 'platform', auth: true, roles: ['superadmin'] }, async (req, res, params, body) => {
+  if (AUTH_DRIVER !== 'supabase') return send(res, 501, { error: 'Plan management requires the Supabase driver.' });
+  const { data: existing, error: existingErr } = await supabaseAdmin().from('plans').select('id').eq('id', params.id).maybeSingle();
+  if (existingErr) return send(res, 500, { error: existingErr.message });
+  if (!existing) return send(res, 404, { error: 'Plan not found.' });
+  const { error: validationError, patch } = validatePlanInput(body, { requireName: false });
+  if (validationError) return send(res, 400, { error: validationError });
+  if (Object.keys(patch).length === 0) return send(res, 400, { error: 'No valid fields to update were provided.' });
+  const { data, error } = await supabaseAdmin().from('plans').update(patch).eq('id', params.id).select().maybeSingle();
+  if (error) return send(res, 400, { error: error.message });
+  send(res, 200, { plan: data });
+});
+
 route('DELETE', '/api/platform/tenants/:id', { hostScope: 'platform', auth: true, roles: ['superadmin'] }, async (req, res, params, body, query, user) => {
   const confirmName = ((body && body.confirmName) || '').trim();
   if (AUTH_DRIVER === 'supabase') {
