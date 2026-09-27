@@ -112,9 +112,7 @@
         </div>
         <div class="field"><label data-i18n="tierLabelForm">Subscription tier</label>
           <select id="cTier" onchange="toggleSignupPayment();clearSellForm();">
-            <option value="starter" selected>Starter — $0/month, 10 products, 15% commission</option>
-            <option value="professional">Professional — $29/month, 100 products, 8% commission</option>
-            <option value="enterprise">Enterprise — $99/month, unlimited products, 3% commission</option>
+            <option value="" selected>Loading plans…</option>
           </select>
           <div class="hint" data-i18n="tierHintForm">You can change this anytime later from Admin → Store Settings.</div>
         </div>
@@ -254,9 +252,8 @@
           <div class="field"><label data-i18n="password">Password</label><input id="rnPassword" type="password" autocomplete="off"></div>
           <div class="field"><label data-i18n="tierLabelForm">Subscription tier</label>
             <select id="rnTier" onchange="updateRenewPrice()">
-              <option value="professional">Professional — $29/month, 100 products, 8% commission</option>
-              <option value="enterprise">Enterprise — $99/month, unlimited products, 3% commission</option>
-            </select>
+            <option value="" selected>Loading plans…</option>
+          </select>
           </div>
           <button type="button" class="btn sm secondary" onclick="checkRenewStatus()" data-i18n="checkStatusBtn">Check current status</button>
           <div id="renewStoreStatus" style="margin:10px 0;"></div>

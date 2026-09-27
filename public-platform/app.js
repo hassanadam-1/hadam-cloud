@@ -765,9 +765,10 @@ function switchRenewType(type) {
   if (type === 'store' || type === 'both') updateRenewPrice();
 }
 function updateRenewPrice() {
-  const prices = { professional: 29, enterprise: 99 };
+  // price now comes from the loaded plans list -- see the lookup added below
   const tier = document.getElementById('rnTier').value;
-  document.getElementById('renewStorePrice').textContent = `${t('priceLabel') || 'Price'}: $${prices[tier]}/${t('perMonthLabel') || 'month'}`;
+  var plan = (state.platformPlans || []).find(function (p) { return p.name === tier; });
+  document.getElementById('renewStorePrice').textContent = `${t('priceLabel') || 'Price'}: $${plan ? plan.monthly_price : ''}/${t('perMonthLabel') || 'month'}`;
 }
 /** Client-side mirror of the backend's validateFullCard — gives immediate
  * feedback without a round-trip; the backend check remains authoritative. */
@@ -967,9 +968,48 @@ async function joinMarketplace() {
     ['jmBusinessName','jmOwnerName','jmEmail','jmPhone','jmCountry','jmCity','jmAddress','jmWebsiteUrl','jmCategory','jmDescription','jmLogoUrl','jmRegistrationNumber','jmVatNumber','jmFacebook','jmInstagram','jmLinkedin','jmX','jmWhatsapp','jmYoutube','jmCardNum','jmCardExp','jmCardCvv'].forEach(id => { document.getElementById(id).value = ''; });
   } catch (e) { msg.innerHTML = `<div class="msg error">${esc(e.message)}</div>`; }
 }
+function formatPlanPrice(n) {
+  var num = Number(n);
+  return Number.isInteger(num) ? String(num) : num.toFixed(2);
+}
+function formatPlanPercent(rate) {
+  var pct = Math.round(Number(rate) * 1000) / 10;
+  return (Number.isInteger(pct) ? pct.toFixed(0) : pct.toFixed(1)) + '%';
+}
+function formatTierOptionLabel(plan) {
+  var products = plan.max_products == null ? 'unlimited products' : (plan.max_products + ' products');
+  return plan.name + ' — $' + formatPlanPrice(plan.monthly_price) + '/month, ' + products + ', ' + formatPlanPercent(plan.commission_rate) + ' commission';
+}
+function populateTierSelects() {
+  var plans = state.platformPlans || [];
+  if (!plans.length) return;
+  var cTierEl = document.getElementById('cTier');
+  if (cTierEl) {
+    cTierEl.innerHTML = plans.map(function (p) { return '<option value="' + esc(p.name) + '">' + esc(formatTierOptionLabel(p)) + '</option>'; }).join('');
+    cTierEl.value = plans[0].name;
+  }
+  var paidPlans = plans.filter(function (p) { return Number(p.monthly_price) > 0; });
+  var rnTierEl = document.getElementById('rnTier');
+  if (rnTierEl && paidPlans.length) {
+    rnTierEl.innerHTML = paidPlans.map(function (p) { return '<option value="' + esc(p.name) + '">' + esc(formatTierOptionLabel(p)) + '</option>'; }).join('');
+    rnTierEl.value = paidPlans[0].name;
+  }
+  if (typeof toggleSignupPayment === 'function') toggleSignupPayment();
+}
+async function loadPlatformPlans() {
+  try {
+    var result = await api('/api/platform/plans/public');
+    state.platformPlans = result.plans || [];
+  } catch (e) {
+    state.platformPlans = [];
+    console.error('[platform plans] failed to load:', e.message);
+  }
+  populateTierSelects();
+}
 function toggleSignupPayment() {
   const tier = document.getElementById('cTier').value;
-  const showing = tier !== 'starter';
+  var selectedPlan = (state.platformPlans || []).find(function (p) { return p.name === tier; });
+  const showing = selectedPlan ? Number(selectedPlan.monthly_price) > 0 : tier !== 'starter';
   document.getElementById('signupPaymentFields').style.display = showing ? 'block' : 'none';
   if (showing) wireCardFieldValidation('c');
 }
@@ -1775,6 +1815,7 @@ async function submitSuperRecoveryMfaCode(factorId) {
   document.documentElement.dir = state.lang === 'ar' ? 'rtl' : 'ltr';
   document.getElementById('langSelect').value = state.lang;
   applyStaticTranslations();
+  loadPlatformPlans();
   await initSuperRecoveryFlow();
   if (state.token) {
     try { const { user } = await api('/api/auth/me'); state.user = user; document.getElementById('authBtn').textContent = t('logout'); document.getElementById('authBtn').style.display = ''; document.getElementById('dashboardNavLink').style.display = 'inline'; go('super'); }
