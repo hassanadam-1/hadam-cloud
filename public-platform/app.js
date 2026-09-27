@@ -1233,13 +1233,117 @@ async function renderSuper() {
     </div>
     <div id="auditLogContainer">${t('loading')}</div>
     <h2 class="section-title" style="margin-top:32px;">${t('marketplaceApplicationsTitle')}</h2>
-    <div id="marketplaceApplicationsList">${t('loading')}</div>`;
+    <div id="marketplaceApplicationsList">${t('loading')}</div>
+    <h2 class="section-title" style="margin-top:32px;">${t('pricingPlansTitle') || 'Store & marketplace pricing'}</h2>
+    <p class="hint" style="max-width:640px;">${t('pricingPlansHint') || 'Manage the plans stores can subscribe to. Changing a price only affects new and future subscriptions -- plans already purchased keep their original pricing.'}</p>
+    <div id="pricingPlansContainer">${t('loading')}</div>
+    <div class="panel" style="max-width:520px;margin-top:16px;">
+      <h3 id="pricingPlanFormTitle" style="margin-top:0;">${t('addPlanTitle') || 'Add a new plan'}</h3>
+      <input type="hidden" id="ppEditId" value="">
+      <div class="field"><label>${t('planNameLabel') || 'Name'}</label><input id="ppName" placeholder="starter"></div>
+      <div class="field"><label>${t('monthlyPriceLabel') || 'Monthly price ($)'}</label><input id="ppMonthlyPrice" type="number" min="0" step="0.01" value="0"></div>
+      <div class="field"><label>${t('yearlyPriceLabel') || 'Yearly price ($)'}</label><input id="ppYearlyPrice" type="number" min="0" step="0.01" value="0"></div>
+      <div class="field"><label>${t('commissionRateLabel') || 'Commission rate (%)'}</label><input id="ppCommissionRate" type="number" min="0" max="100" step="0.1" value="0"></div>
+      <div class="field"><label>${t('maxProductsLabel') || 'Max products (blank = unlimited)'}</label><input id="ppMaxProducts" type="number" min="0" step="1"></div>
+      <div class="field"><label>${t('maxStorageLabel') || 'Max image storage, MB (blank = unlimited)'}</label><input id="ppMaxStorageMb" type="number" min="0" step="1"></div>
+      <div class="field"><label>${t('staffAccountsLabel') || 'Staff accounts included'}</label><input id="ppStaffAccounts" type="number" min="1" step="1" value="1"></div>
+      <div class="field"><label><input type="checkbox" id="ppMarketplaceAllowed" style="width:auto;margin-inline-end:6px;">${t('marketplaceAllowedLabel') || 'Marketplace listing allowed on this plan'}</label></div>
+      <div class="field"><label><input type="checkbox" id="ppCustomDomain" style="width:auto;margin-inline-end:6px;">${t('customDomainLabel') || 'Custom domain allowed on this plan'}</label></div>
+      <div id="pricingPlanFormMsg"></div>
+      <button class="btn full" onclick="submitPlanForm()">${t('savePlanBtn') || 'Save plan'}</button>
+      <button class="btn ghost sm" style="margin-top:8px;" onclick="resetPlanForm()">${t('cancelEditBtn') || 'Cancel / new plan'}</button>
+    </div>`;
   renderSuperMfaStatus();
   renderSuperEmailOtpStatus();
   renderSuperBackupCodesStatus();
   renderAuditLog(0);
   renderMarketplaceApplications();
   renderContactMessages();
+  renderPricingPlans();
+}
+async function renderPricingPlans() {
+  const container = document.getElementById('pricingPlansContainer');
+  if (!container) return;
+  try {
+    const { plans } = await api('/api/platform/plans');
+    state.plans = plans;
+    container.innerHTML = plans.length === 0 ? `<div class="empty">${t('noPlansYet') || 'No plans yet -- add one below.'}</div>` : `
+      <table><thead><tr><th>${t('planNameLabel') || 'Name'}</th><th>${t('monthlyPriceLabel') || 'Monthly'}</th><th>${t('yearlyPriceLabel') || 'Yearly'}</th><th>${t('commissionRateLabel') || 'Commission'}</th><th>${t('maxProductsLabel') || 'Max products'}</th><th>${t('status')}</th><th></th><th></th></tr></thead><tbody>
+      ${plans.map(p => `<tr>
+        <td>${esc(p.name)}</td>
+        <td>$${Number(p.monthly_price).toFixed(2)}</td>
+        <td>$${Number(p.yearly_price).toFixed(2)}</td>
+        <td>${(Number(p.commission_rate) * 100).toFixed(1)}%</td>
+        <td>${p.max_products == null ? (t('unlimited') || 'Unlimited') : p.max_products}</td>
+        <td><span class="status-pill ${p.active ? 'success' : 'failed'}">${p.active ? (t('activeLabel') || 'Active') : (t('inactiveLabel') || 'Inactive')}</span></td>
+        <td><button class="btn ghost sm" onclick="editPlan('${p.id}')">${t('editBtn') || 'Edit'}</button></td>
+        <td><button class="btn ghost sm" onclick="togglePlanActive('${p.id}', ${p.active})">${p.active ? (t('deactivateBtn') || 'Deactivate') : (t('activateBtn') || 'Activate')}</button></td>
+      </tr>`).join('')}</tbody></table>`;
+  } catch (e) { container.innerHTML = `<div class="msg error">${esc(e.message)}</div>`; }
+}
+function editPlan(id) {
+  const plan = (state.plans || []).find(p => p.id === id);
+  if (!plan) return;
+  document.getElementById('ppEditId').value = plan.id;
+  document.getElementById('pricingPlanFormTitle').textContent = (t('editPlanTitle') || 'Edit plan') + ': ' + plan.name;
+  document.getElementById('ppName').value = plan.name;
+  document.getElementById('ppMonthlyPrice').value = plan.monthly_price;
+  document.getElementById('ppYearlyPrice').value = plan.yearly_price;
+  document.getElementById('ppCommissionRate').value = Number(plan.commission_rate) * 100;
+  document.getElementById('ppMaxProducts').value = plan.max_products == null ? '' : plan.max_products;
+  document.getElementById('ppMaxStorageMb').value = plan.max_storage_mb == null ? '' : plan.max_storage_mb;
+  document.getElementById('ppStaffAccounts').value = plan.staff_accounts;
+  document.getElementById('ppMarketplaceAllowed').checked = !!plan.marketplace_allowed;
+  document.getElementById('ppCustomDomain').checked = !!plan.custom_domain;
+  document.getElementById('pricingPlanFormMsg').innerHTML = '';
+}
+function resetPlanForm() {
+  document.getElementById('ppEditId').value = '';
+  document.getElementById('pricingPlanFormTitle').textContent = t('addPlanTitle') || 'Add a new plan';
+  document.getElementById('ppName').value = '';
+  document.getElementById('ppMonthlyPrice').value = 0;
+  document.getElementById('ppYearlyPrice').value = 0;
+  document.getElementById('ppCommissionRate').value = 0;
+  document.getElementById('ppMaxProducts').value = '';
+  document.getElementById('ppMaxStorageMb').value = '';
+  document.getElementById('ppStaffAccounts').value = 1;
+  document.getElementById('ppMarketplaceAllowed').checked = false;
+  document.getElementById('ppCustomDomain').checked = false;
+  document.getElementById('pricingPlanFormMsg').innerHTML = '';
+}
+async function submitPlanForm() {
+  const msg = document.getElementById('pricingPlanFormMsg');
+  const editId = document.getElementById('ppEditId').value;
+  const maxProductsRaw = document.getElementById('ppMaxProducts').value;
+  const maxStorageRaw = document.getElementById('ppMaxStorageMb').value;
+  const body = {
+    name: document.getElementById('ppName').value.trim(),
+    monthly_price: Number(document.getElementById('ppMonthlyPrice').value),
+    yearly_price: Number(document.getElementById('ppYearlyPrice').value),
+    commission_rate: Number(document.getElementById('ppCommissionRate').value) / 100,
+    max_products: maxProductsRaw === '' ? null : Number(maxProductsRaw),
+    max_storage_mb: maxStorageRaw === '' ? null : Number(maxStorageRaw),
+    staff_accounts: Number(document.getElementById('ppStaffAccounts').value),
+    marketplace_allowed: document.getElementById('ppMarketplaceAllowed').checked,
+    custom_domain: document.getElementById('ppCustomDomain').checked,
+  };
+  try {
+    if (editId) {
+      await api('/api/platform/plans/' + editId, { method: 'PATCH', body: JSON.stringify(body) });
+      msg.innerHTML = `<div class="msg success">${t('planUpdatedMsg') || 'Plan updated.'}</div>`;
+    } else {
+      await api('/api/platform/plans', { method: 'POST', body: JSON.stringify(body) });
+      msg.innerHTML = `<div class="msg success">${t('planCreatedMsg') || 'Plan created.'}</div>`;
+    }
+    resetPlanForm();
+    renderPricingPlans();
+  } catch (e) { msg.innerHTML = `<div class="msg error">${esc(e.message)}</div>`; }
+}
+async function togglePlanActive(id, currentlyActive) {
+  try {
+    await api('/api/platform/plans/' + id, { method: 'PATCH', body: JSON.stringify({ active: !currentlyActive }) });
+    renderPricingPlans();
+  } catch (e) { alert(e.message); }
 }
 async function renderContactMessages() {
   const container = document.getElementById('contactMessagesContainer');
