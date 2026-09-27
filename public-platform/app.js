@@ -1014,8 +1014,8 @@ async function createTenant() {
         <div class="panel" style="max-width:480px;margin:60px auto;text-align:center;">
           <h3>Pending approval: ${esc(data.tenant.name)}</h3>
           <p style="color:var(--text-dim);font-size:14px;">
-            Your store has been created, but since this account already owns 5 or more
-            stores, it needs approval from the platform admin before it goes live.
+            You have more than 5 stores. Your request has been sent to the
+            Superadmin to approve it.
           </p>
           <div class="hint">You will be notified once it is approved. No further action is needed from you right now.</div>
         </div>`;
