@@ -1610,7 +1610,12 @@ route('POST', '/api/platform/renew-store-subscription', { hostScope: 'platform' 
   if (rateLimited(req, res, 'renew-store-subscription', 15, 5)) return;
   const { subdomain, adminEmail, adminPassword, tier, card, includeMarketplace } = body;
   if (!subdomain || !adminEmail || !adminPassword) return send(res, 400, { error: apiT('subdomainEmailPasswordRequired', reqLang(req)) });
-  if (!SUBSCRIPTION_TIERS[tier]) return send(res, 400, { error: `tier must be one of: ${Object.keys(SUBSCRIPTION_TIERS).join(', ')}.` });
+  // NOTE (2026-09-27): the old blanket SUBSCRIPTION_TIERS[tier] check that used to sit here
+  // was removed -- it rejected any tier not in the hardcoded 3-tier list before the Supabase
+  // driver even got a chance to look the tier up in the real `plans` table (which is what
+  // tenant creation already validates against). The Supabase branch below now validates via
+  // the `plan` row it fetches from `plans`; the local/legacy branch further down (no
+  // `plans` table there) keeps an equivalent SUBSCRIPTION_TIERS[tier] check of its own.
   const cardFormatError = validateFullCard(card, reqLang(req));
   if (cardFormatError) return send(res, 400, { error: cardFormatError });
   const cardDigits = (card && card.number || '').replace(/\s/g, '');
@@ -1627,6 +1632,7 @@ route('POST', '/api/platform/renew-store-subscription', { hostScope: 'platform' 
     if (role !== 'admin') return send(res, 403, { error: apiT('onlyStoreAdminRenew', reqLang(req)) });
     const { data: currentSub } = await supabaseAdmin().from('current_subscriptions').select('expiry_date').eq('tenant_id', tenantRow.id).maybeSingle();
     const { data: plan } = await supabaseAdmin().from('plans').select('id').eq('name', tier).maybeSingle();
+    if (!plan) return send(res, 400, { error: `Unknown subscription tier: ${tier}.` });
     const currentExpiry = currentSub ? new Date(currentSub.expiry_date).getTime() : Date.now();
     const newExpiry = new Date(Math.max(Date.now(), currentExpiry) + THIRTY_DAYS_MS).toISOString().slice(0, 10);
     if (plan) await supabaseAdmin().from('subscriptions').insert({ tenant_id: tenantRow.id, plan_id: plan.id, expiry_date: newExpiry, payment_status: 'paid' });
@@ -1644,6 +1650,7 @@ route('POST', '/api/platform/renew-store-subscription', { hostScope: 'platform' 
   if (!tenant) return send(res, 404, { error: apiT('noStoreForSubdomain', reqLang(req)) });
   const user = findUserByEmail(adminEmail, tenant.id);
   if (!user || user.role !== 'admin' || !verifyPassword(adminPassword, user.passwordHash)) return send(res, 401, { error: apiT('incorrectStoreAdminLogin', reqLang(req)) });
+  if (!SUBSCRIPTION_TIERS[tier]) return send(res, 400, { error: `tier must be one of: ${Object.keys(SUBSCRIPTION_TIERS).join(', ')}.` });
   tenant.subscriptionTier = tier;
   tenant.subscriptionExpiresAt = Math.max(Date.now(), tenant.subscriptionExpiresAt || Date.now()) + THIRTY_DAYS_MS;
   tenant.lastAlertLevel = null;
@@ -2021,6 +2028,20 @@ function validatePlanInput(body, { requireName }) {
   }
   return { patch };
 }
+
+/** Public, read-only, ACTIVE-plans-only list -- powers the signup and renewal tier
+ * dropdowns (public-platform/index.html), which otherwise have no way to see plans
+ * Superadmin has added, edited, or deactivated via the route below. Deliberately returns
+ * fewer fields than the superadmin-only route, and excludes inactive plans. */
+route('GET', '/api/platform/plans/public', { hostScope: 'any' }, async (req, res) => {
+  if (AUTH_DRIVER !== 'supabase') {
+    const plans = Object.entries(SUBSCRIPTION_TIERS).map(([name, t]) => ({ id: name, name, monthly_price: t.monthlyFee, max_products: t.maxProducts, commission_rate: t.commissionRate }));
+    return send(res, 200, { plans });
+  }
+  const { data, error } = await supabaseAnon.from('plans').select('id, name, monthly_price, max_products, commission_rate').eq('active', true).order('monthly_price', { ascending: true });
+  if (error) return send(res, 500, { error: error.message });
+  send(res, 200, { plans: data || [] });
+});
 
 /** Superadmin plan/pricing management -- lists all plans (including inactive) directly from
  * the real 'plans' table, the same table store creation and renewal already read from.
