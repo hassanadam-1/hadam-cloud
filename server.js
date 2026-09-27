@@ -2540,12 +2540,17 @@ route('DELETE', '/api/admin/store', { hostScope: 'tenant', auth: true, roles: ['
 route('POST', '/api/admin/store/renew', { hostScope: 'tenant', auth: true, roles: ['admin'] }, async (req, res, params, body, query, user, tenant) => {
   if (!TENANT_PLANS.includes(body.plan)) return send(res, 400, { error: `plan must be one of: ${TENANT_PLANS.join(', ')}.` });
   const targetTier = body.subscriptionTier;
-  if (targetTier !== undefined && !SUBSCRIPTION_TIERS[targetTier]) {
-    return send(res, 400, { error: `subscriptionTier must be one of: ${Object.keys(SUBSCRIPTION_TIERS).join(', ')}.` });
+  let targetPlanRow = null;
+  if (targetTier !== undefined && AUTH_DRIVER === 'supabase') {
+    const { data: fetchedTargetPlan } = await supabaseAdmin().from('plans').select('id, name, monthly_price, max_products').eq('name', targetTier).maybeSingle();
+    targetPlanRow = fetchedTargetPlan;
+  }
+  if (targetTier !== undefined && ((AUTH_DRIVER === 'supabase' && !targetPlanRow) || (AUTH_DRIVER !== 'supabase' && !SUBSCRIPTION_TIERS[targetTier]))) {
+    return send(res, 400, { error: `Unknown subscription tier: ${targetTier}.` });
   }
   // Downgrading tiers must not silently leave a store over its new product limit.
   if (targetTier) {
-    const newLimit = SUBSCRIPTION_TIERS[targetTier].maxProducts;
+    const newLimit = targetPlanRow ? targetPlanRow.max_products : SUBSCRIPTION_TIERS[targetTier].maxProducts;
     const currentCount = AUTH_DRIVER === 'supabase'
       ? (await supabaseForRequest(bearerToken(req)).from('products').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id)).count || 0
       : db.products.filter(p => p.tenantId === tenant.id).length;
@@ -2561,11 +2566,13 @@ route('POST', '/api/admin/store/renew', { hostScope: 'tenant', auth: true, roles
   // store that is currently on, and staying on, the free starter tier is
   // exempt.
   let currentTierName = 'starter';
+  let currentTierPrice = 0;
   let currentExpiryForEligibility = null;
   if (AUTH_DRIVER === 'supabase') {
-    const { data: currentSubForCheck } = await supabaseAdmin().from('current_subscriptions').select('*, plans(name)').eq('tenant_id', tenant.id).maybeSingle();
+    const { data: currentSubForCheck } = await supabaseAdmin().from('current_subscriptions').select('*, plans(name, monthly_price)').eq('tenant_id', tenant.id).maybeSingle();
     console.error('[DEBUG renew-eligibility] tenant.id:', tenant.id, '| currentSubForCheck:', JSON.stringify(currentSubForCheck));
     if (currentSubForCheck && currentSubForCheck.plans) currentTierName = currentSubForCheck.plans.name;
+    if (currentSubForCheck && currentSubForCheck.plans) currentTierPrice = Number(currentSubForCheck.plans.monthly_price) || 0;
     if (currentSubForCheck) currentExpiryForEligibility = new Date(currentSubForCheck.expiry_date).getTime();
   } else {
     currentTierName = tenant.subscriptionTier || 'starter';
@@ -2587,7 +2594,10 @@ route('POST', '/api/admin/store/renew', { hostScope: 'tenant', auth: true, roles
       return send(res, 400, { error: `Renewal is not available yet. You can renew when 7 days or fewer remain (${daysLeft} days left). To switch tiers instead, choose a different tier on the Sale on Hadam page.` });
     }
   }
-  const paymentRequired = (targetTier && targetTier !== 'starter') || (!targetTier && currentTierName !== 'starter');
+  const relevantPrice = targetTier
+    ? (targetPlanRow ? Number(targetPlanRow.monthly_price) : (SUBSCRIPTION_TIERS[targetTier] ? SUBSCRIPTION_TIERS[targetTier].monthlyFee : 0))
+    : currentTierPrice;
+  const paymentRequired = relevantPrice > 0;
   if (paymentRequired) {
     const cardFormatError = validateFullCard(body.card, reqLang(req));
     if (cardFormatError) return send(res, 400, { error: cardFormatError });
@@ -2604,7 +2614,7 @@ route('POST', '/api/admin/store/renew', { hostScope: 'tenant', auth: true, roles
       const { data: targetPlan } = await client.from('plans').select('id').eq('name', targetTier).maybeSingle();
       if (targetPlan) planId = targetPlan.id;
     } else if (!planId) {
-      const { data: starterPlan } = await client.from('plans').select('id').eq('name', 'starter').maybeSingle();
+      const { data: starterPlan } = await client.from('plans').select('id').order('monthly_price', { ascending: true }).limit(1).maybeSingle();
       planId = starterPlan ? starterPlan.id : null;
     }
     const currentExpiry = currentSub ? new Date(currentSub.expiry_date).getTime() : Date.now();
