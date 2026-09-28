@@ -42,6 +42,15 @@ if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
 const SECRET = process.env.JWT_SECRET || 'hadam-dev-secret-change-in-production';
 const BASE_DOMAIN = (process.env.HADAM_BASE_DOMAIN || 'hadam.com').toLowerCase();
 const DB_PATH = process.env.HADAM_DB_PATH || path.join(__dirname, 'data', 'db.json');
+
+// SECURITY (release-blocker fix): the legacy simulated/test card mechanism
+// must never be able to grant paid status by itself. This only answers
+// whether that mechanism is switched on at all -- every call site keeps its
+// own full authorization and business-rule checks unchanged. Must be unset
+// (or anything other than the literal string 'true') in the real Render
+// production environment; set only for internal dev/staging QA.
+const ALLOW_SIMULATED_PAYMENTS = process.env.ALLOW_SIMULATED_PAYMENTS === 'true';
+function simulatedPaymentsEnabled() { return ALLOW_SIMULATED_PAYMENTS; }
 const SEED_PATH = path.join(__dirname, 'data', 'seed.json');
 const TENANT_PUBLIC_DIR = path.join(__dirname, 'public');
 const PLATFORM_PUBLIC_DIR = path.join(__dirname, 'public-platform');
@@ -1428,7 +1437,7 @@ route('POST', '/api/platform/marketplace-members', { hostScope: 'platform' }, as
   if (chosenPlan === 'featured') {
     const cardDigits = (card && card.number || '').replace(/\s/g, '');
     if (cardDigits.length < 12) return send(res, 400, { error: apiT('validCardRequiredFeatured', reqLang(req)) });
-    if (cardDigits === '0000000000000000') return send(res, 402, { error: apiT('cardDeclined', reqLang(req)) });
+    if (!simulatedPaymentsEnabled() || cardDigits === '0000000000000000') return send(res, 402, { error: apiT('cardDeclined', reqLang(req)) });
   }
   const cleanSocial = socialLinks && typeof socialLinks === 'object' ? socialLinks : {};
   if (AUTH_DRIVER === 'supabase') {
@@ -1619,7 +1628,7 @@ route('POST', '/api/platform/renew-store-subscription', { hostScope: 'platform' 
   const cardFormatError = validateFullCard(card, reqLang(req));
   if (cardFormatError) return send(res, 400, { error: cardFormatError });
   const cardDigits = (card && card.number || '').replace(/\s/g, '');
-  if (cardDigits === '0000000000000000') return send(res, 402, { error: apiT('cardDeclined', reqLang(req)) });
+  if (!simulatedPaymentsEnabled() || cardDigits === '0000000000000000') return send(res, 402, { error: apiT('cardDeclined', reqLang(req)) });
 
   if (AUTH_DRIVER === 'supabase') {
     const { data: tenantRow, error: tenantErr } = await supabaseAdmin().from('tenants').select('*').eq('subdomain', subdomain.toLowerCase().trim()).maybeSingle();
@@ -1671,7 +1680,7 @@ route('POST', '/api/platform/add-marketplace-to-store', { hostScope: 'platform' 
   const cardFormatError = validateFullCard(card, reqLang(req));
   if (cardFormatError) return send(res, 400, { error: cardFormatError });
   const cardDigits = (card && card.number || '').replace(/\s/g, '');
-  if (cardDigits === '0000000000000000') return send(res, 402, { error: apiT('cardDeclined', reqLang(req)) });
+  if (!simulatedPaymentsEnabled() || cardDigits === '0000000000000000') return send(res, 402, { error: apiT('cardDeclined', reqLang(req)) });
 
   if (AUTH_DRIVER === 'supabase') {
     const { data: tenant, error: tenantErr } = await supabaseAdmin().from('tenants').select('*').eq('subdomain', subdomain.toLowerCase().trim()).maybeSingle();
@@ -1723,7 +1732,7 @@ async function renewMarketplaceMember(req, res, params, body) {
   const cardFormatError = validateFullCard(body.card, reqLang(req));
   if (cardFormatError) return send(res, 400, { error: cardFormatError });
   const cardDigits = (body.card && body.card.number || '').replace(/\s/g, '');
-  if (cardDigits === '0000000000000000') return send(res, 402, { error: apiT('cardDeclined', reqLang(req)) });
+  if (!simulatedPaymentsEnabled() || cardDigits === '0000000000000000') return send(res, 402, { error: apiT('cardDeclined', reqLang(req)) });
   if (AUTH_DRIVER === 'supabase') {
     const { data: existing, error: findErr } = await supabaseAdmin().from('marketplace_members').select('plan, status, subscription_expires_at').eq('id', params.id).maybeSingle();
     if (findErr) return send(res, 500, { error: findErr.message });
@@ -1892,7 +1901,7 @@ route('POST', '/api/platform/tenants', { hostScope: 'platform' }, async (req, re
       const cardFormatError = validateFullCard(card, reqLang(req));
       if (cardFormatError) return send(res, 400, { error: cardFormatError });
       const cardDigits = (card && card.number || '').replace(/\s/g, '');
-      if (cardDigits.replace(/0/g, '').length === 0) return send(res, 402, { error: apiT('paymentDeclinedTryDifferent', reqLang(req)) });
+      if (!simulatedPaymentsEnabled() || cardDigits.replace(/0/g, '').length === 0) return send(res, 402, { error: apiT('paymentDeclinedTryDifferent', reqLang(req)) });
     }
 
     // STORE CREATION LIMIT: 5 stores self-service, 6th+ needs Superadmin approval.
@@ -1946,7 +1955,7 @@ route('POST', '/api/platform/tenants', { hostScope: 'platform' }, async (req, re
     const cardFormatError = validateFullCard(card, reqLang(req));
     if (cardFormatError) return send(res, 400, { error: cardFormatError });
     const cardDigits = (card && card.number || '').replace(/\s/g, '');
-    const paymentSucceeded = cardDigits.replace(/0/g, '').length > 0;
+    const paymentSucceeded = simulatedPaymentsEnabled() && cardDigits.replace(/0/g, '').length > 0;
     if (!paymentSucceeded) return send(res, 402, { error: apiT('paymentDeclinedTryDifferent', reqLang(req)) });
   }
   const tenant = { id: newId('t'), subdomain: sub, name: storeName, status: needsApproval ? 'pending_admin_approval' : 'active', plan: chosenPlan, subscriptionTier: tier, tagline: (tagline || '').slice(0, 200), createdAt: Date.now(), subscriptionExpiresAt: Date.now() + THIRTY_DAYS_MS };
@@ -2602,7 +2611,7 @@ route('POST', '/api/admin/store/renew', { hostScope: 'tenant', auth: true, roles
     const cardFormatError = validateFullCard(body.card, reqLang(req));
     if (cardFormatError) return send(res, 400, { error: cardFormatError });
     const cardDigits = (body.card && body.card.number || '').replace(/\s/g, '');
-    if (cardDigits === '0000000000000000') return send(res, 402, { error: apiT('cardDeclined', reqLang(req)) });
+    if (!simulatedPaymentsEnabled() || cardDigits === '0000000000000000') return send(res, 402, { error: apiT('cardDeclined', reqLang(req)) });
   }
   if (AUTH_DRIVER === 'supabase') {
     const client = supabaseForRequest(bearerToken(req));
@@ -4275,7 +4284,7 @@ route('POST', '/api/orders', { hostScope: 'tenant', auth: true, roles: ['client'
   const cardFormatError = validateFullCard(card, reqLang(req));
   if (cardFormatError) return send(res, 400, { error: cardFormatError });
   const cardDigits = (card && card.number || '').replace(/\s/g, '');
-  const paymentSucceeded = cardDigits.replace(/0/g, '').length > 0;
+  const paymentSucceeded = simulatedPaymentsEnabled() && cardDigits.replace(/0/g, '').length > 0;
 
   if (AUTH_DRIVER === 'supabase') {
     const client = supabaseForRequest(bearerToken(req));
@@ -5437,7 +5446,7 @@ route('POST', '/api/orders/:orderId/items/:productId/submit-refund-payment', { h
   const cardFormatError = validateFullCard(body.card, reqLang(req));
   if (cardFormatError) return send(res, 400, { error: cardFormatError });
   const cardDigits = ((body.card && body.card.number) || '').replace(/\s/g, '');
-  if (cardDigits === '0000000000000000') return send(res, 402, { error: apiT('cardDeclinedTryDifferent', reqLang(req)) });
+  if (!simulatedPaymentsEnabled() || cardDigits === '0000000000000000') return send(res, 402, { error: apiT('cardDeclinedTryDifferent', reqLang(req)) });
   const last4 = cardDigits.slice(-4);
 
   if (AUTH_DRIVER === 'supabase') {

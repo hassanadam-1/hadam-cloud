@@ -36,6 +36,13 @@ if (fs.existsSync(TEST_DB)) fs.unlinkSync(TEST_DB);
 process.env.HADAM_DB_PATH = TEST_DB;
 process.env.HADAM_TEST_MODE = '1';
 process.env.JWT_SECRET = 'test-secret';
+// Explicitly opt this test run into the legacy simulated/test-card
+// mechanism (see server.js's ALLOW_SIMULATED_PAYMENTS security comment).
+// This suite relies on it throughout to exercise checkout, subscriptions,
+// and marketplace flows without a live Stripe/PayPal sandbox. This line
+// only ever affects this isolated test process -- it must stay unset in
+// any real deployment, same as every other env var forced above.
+process.env.ALLOW_SIMULATED_PAYMENTS = 'true';
 // Fake, local-only Stripe test-mode credentials — used ONLY for offline
 // HMAC signature generation/verification in Phase 2 webhook tests (see
 // stripe.webhooks.generateTestHeaderString / constructEvent). No real
