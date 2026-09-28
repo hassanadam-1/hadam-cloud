@@ -214,7 +214,7 @@ const I18N = {
     tierCta_starter: 'Start Free', tierCta_professional: 'Select Professional', tierCta_enterprise: 'Select Enterprise',
     wantToRenewHint: 'Want to renew or extend this plan? Go to', settingsLinkLabel: 'Settings', confirmBtn: 'Confirm',
     currentPlanBadge: 'Current plan', perMonth: 'month', freeForever: 'Free forever',
-    hadamCommission: 'Hadam commission', perSale: 'per sale',
+    hadamCommission: 'Hadam commission', perSale: 'per sale', productLimitLabel: 'Product limit',
     fSubdomain: 'Your subdomain store', fUpTo10: 'Up to 10 products', fUpTo100: 'Up to 100 products', fUnlimited: 'Unlimited products',
     fBasicDashboard: 'Basic seller dashboard', fFullDashboard: 'Full seller dashboard',
     fEmailSupport: 'Email support', fPriorityEmailSupport: 'Priority email support', f247Support: '24/7 priority support',
@@ -455,7 +455,7 @@ const I18N = {
     tierCta_starter: 'ابدأ مجانًا', tierCta_professional: 'اختر الاحترافي', tierCta_enterprise: 'اختر المؤسسات',
     wantToRenewHint: 'تريد تجديد أو تمديد هذه الخطة؟ اذهب إلى', settingsLinkLabel: 'الإعدادات', confirmBtn: 'تأكيد',
     currentPlanBadge: 'الخطة الحالية', perMonth: 'شهر', freeForever: 'مجاني للأبد',
-    hadamCommission: 'عمولة هدام', perSale: 'لكل عملية بيع',
+    hadamCommission: 'عمولة هدام', perSale: 'لكل عملية بيع', productLimitLabel: 'حد المنتجات',
     fSubdomain: 'متجرك بنطاق فرعي خاص', fUpTo10: 'حتى 10 منتجات', fUpTo100: 'حتى 100 منتج', fUnlimited: 'منتجات غير محدودة',
     fBasicDashboard: 'لوحة تحكم بائع أساسية', fFullDashboard: 'لوحة تحكم بائع كاملة',
     fEmailSupport: 'دعم عبر البريد الإلكتروني', fPriorityEmailSupport: 'دعم بريد إلكتروني ذو أولوية', f247Support: 'دعم على مدار الساعة ذو أولوية',
@@ -696,7 +696,7 @@ const I18N = {
     tierCta_starter: 'Commencer gratuitement', tierCta_professional: 'Choisir Professionnel', tierCta_enterprise: 'Choisir Entreprise',
     wantToRenewHint: 'Vous voulez renouveler ou prolonger cette offre ? Allez dans', settingsLinkLabel: 'Paramètres', confirmBtn: 'Confirmer',
     currentPlanBadge: 'Offre actuelle', perMonth: 'mois', freeForever: 'Gratuit pour toujours',
-    hadamCommission: 'Commission Hadam', perSale: 'par vente',
+    hadamCommission: 'Commission Hadam', perSale: 'par vente', productLimitLabel: 'Limite de produits',
     fSubdomain: 'Votre boutique en sous-domaine', fUpTo10: "Jusqu'à 10 produits", fUpTo100: "Jusqu'à 100 produits", fUnlimited: 'Produits illimités',
     fBasicDashboard: 'Tableau de bord vendeur de base', fFullDashboard: 'Tableau de bord vendeur complet',
     fEmailSupport: 'Support par e-mail', fPriorityEmailSupport: 'Support e-mail prioritaire', f247Support: 'Support prioritaire 24/7',
@@ -964,39 +964,64 @@ const TIER_FEATURE_KEYS = {
   enterprise: { featureKeys: ['fSubdomain', 'fUnlimited', 'fFullDashboard', 'f247Support', 'fAdvancedAnalytics', 'fCustomStoreBranding', 'fFullAPIAccess', 'fDedicatedManager'], missingKeys: [] },
 };
 async function fetchPricing() {
-  if (!state._pricingTiers) { const { tiers } = await api('/api/platform/pricing'); state._pricingTiers = tiers; }
-  return state._pricingTiers;
+  if (!state._pricingPlans) { const { plans } = await api('/api/platform/plans/public'); state._pricingPlans = plans; }
+  return state._pricingPlans;
 }
-function pricingCardsHtml(tiers, currentTier) {
+function tierFeatureMetaFor(planName) {
+  return TIER_FEATURE_KEYS[String(planName || '').toLowerCase()] || null;
+}
+function formatPlanPrice(n) {
+  var num = Number(n);
+  return Number.isInteger(num) ? String(num) : num.toFixed(2);
+}
+function formatPlanPercent(rate) {
+  var pct = Math.round(Number(rate) * 1000) / 10;
+  return (Number.isInteger(pct) ? pct.toFixed(0) : pct.toFixed(1)) + '%';
+}
+function pricingCardsHtml(plans, currentTier) {
   return `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));">
-    ${Object.entries(tiers).map(([key, tier]) => {
-      const meta = TIER_FEATURE_KEYS[key];
+    ${plans.map((plan) => {
+      const key = plan.name;
+      const lowerKey = String(key || '').toLowerCase();
+      const meta = tierFeatureMetaFor(key);
       const isCurrent = currentTier === key;
+      const priceNum = Number(plan.monthly_price);
+      const heading = meta ? t('tierLabel_' + lowerKey) : esc(key);
+      const cta = meta ? t('tierCta_' + lowerKey) : `${t('switchToPlanConfirm')} ${esc(key)}`;
       return `<div class="panel" style="${isCurrent ? 'border-color:var(--accent);' : ''}">
-        <h3 style="display:flex;justify-content:space-between;align-items:center;">${t('tierLabel_' + key)} ${isCurrent ? `<span class="status-pill success">${t('currentPlanBadge')}</span>` : ''}</h3>
-        <div style="font-family:var(--font-mono);font-size:26px;color:var(--accent);margin-bottom:2px;">$${tier.monthlyFee}${tier.monthlyFee ? `<span style="font-size:13px;color:var(--text-dim)">/${t('perMonth')}</span>` : ''}</div>
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">${tier.monthlyFee === 0 ? t('freeForever') : ''}</div>
-        <div class="hint" style="margin-bottom:10px;">${t('hadamCommission')}: <strong style="color:var(--text)">${(tier.commissionRate * 100).toFixed(0)}% ${t('perSale')}</strong></div>
+        <h3 style="display:flex;justify-content:space-between;align-items:center;">${heading} ${isCurrent ? `<span class="status-pill success">${t('currentPlanBadge')}</span>` : ''}</h3>
+        <div style="font-family:var(--font-mono);font-size:26px;color:var(--accent);margin-bottom:2px;">$${formatPlanPrice(plan.monthly_price)}${priceNum > 0 ? `<span style="font-size:13px;color:var(--text-dim)">/${t('perMonth')}</span>` : ''}</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">${priceNum === 0 ? t('freeForever') : ''}</div>
+        <div class="hint" style="margin-bottom:10px;">${t('hadamCommission')}: <strong style="color:var(--text)">${formatPlanPercent(plan.commission_rate)} ${t('perSale')}</strong></div>
         <div style="font-size:13px;color:var(--text-dim);line-height:2;">
-          ${meta.featureKeys.map(k => `✓ ${t(k)}`).join('<br>')}
-          ${meta.missingKeys.map(k => `<br><span style="opacity:.4">✕ ${t(k)}</span>`).join('')}
+          ${meta
+            ? meta.featureKeys.map(k => `✓ ${t(k)}`).join('<br>') + meta.missingKeys.map(k => `<br><span style="opacity:.4">✕ ${t(k)}</span>`).join('')
+            : `${t('productLimitLabel')}: ${plan.max_products == null ? t('fUnlimited') : plan.max_products}`
+          }
         </div>
-        ${state.user && state.user.role === 'admin' ? `<button class="btn full" style="margin-top:16px;" onclick="selectTier('${key}')" ${isCurrent ? 'disabled' : ''}>${isCurrent ? t('currentPlanBadge') : t('tierCta_' + key)}</button>` : ''}
+        ${state.user && state.user.role === 'admin' ? `<button class="btn full" style="margin-top:16px;" onclick="selectTier('${key}')" ${isCurrent ? 'disabled' : ''}>${isCurrent ? t('currentPlanBadge') : cta}</button>` : ''}
         ${isCurrent && state.user && state.user.role === 'admin' ? `<div class="hint" style="margin-top:8px;">${t('wantToRenewHint') || 'Want to renew or extend this plan? Go to'} <a href="#" onclick="state.adminTab='settings';go('admin');return false;" style="color:var(--accent);">${t('settingsLinkLabel') || 'Settings'}</a>.</div>` : ''}
       </div>`;
     }).join('')}
   </div>
   <div class="hint" style="margin-top:14px;">${t('pricingDisclaimer')}</div>`;
 }
+function tierDisplayLabel(tier) {
+  const meta = tierFeatureMetaFor(tier);
+  return meta ? t('tierLabel_' + String(tier || '').toLowerCase()) : tier;
+}
 function selectTier(tier) {
-  if (tier === 'starter') {
-    if (!confirm(`${t('switchToPlanConfirm')} ${t('tierLabel_' + tier)}?`)) return;
+  var cachedPlans = state._pricingPlans || [];
+  var matchedPlanForTier = cachedPlans.find(function (p) { return p.name === tier; });
+  var tierIsFree = matchedPlanForTier ? Number(matchedPlanForTier.monthly_price) === 0 : tier === 'starter';
+  if (tierIsFree) {
+    if (!confirm(`${t('switchToPlanConfirm')} ${tierDisplayLabel(tier)}?`)) return;
     submitTierChange(tier, null);
     return;
   }
   const container = document.getElementById('genericModalContent');
   container.innerHTML = `
-    <h3>${t('switchToPlanConfirm')} ${t('tierLabel_' + tier)}?</h3>
+    <h3>${t('switchToPlanConfirm')} ${esc(tierDisplayLabel(tier))}?</h3>
     <div class="field"><label>${t('cardNumber')}</label><input id="stCardNum" dir="ltr" placeholder="4111 1111 1111 1111" maxlength="19" autocomplete="off"></div>
     <div class="row2">
       <div class="field"><label>${t('expiry')}</label><input id="stCardExp" dir="ltr" placeholder="MM/YY" autocomplete="off"></div>
