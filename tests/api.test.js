@@ -2438,10 +2438,10 @@ module.exports = async function runApiTests(port) {
       assert.strictEqual(status, 201);
       adminToken = body.token;
     });
-    await test('the same email cannot create a second store while the first is active', async () => {
+    await test('the same email can create a second store while under the self-service limit', async () => {
       const { status, body } = await call('localhost', '/api/platform/tenants', { method: 'POST', body: JSON.stringify({ subdomain: 'second-' + uniq(), storeName: 'Second Store', adminName: 'Owner', adminEmail: email, adminPassword: 'password123', plan: 'both' }) });
-      assert.strictEqual(status, 409);
-      assert.ok(body.error.includes('already have a store'));
+      assert.strictEqual(status, 201);
+      assert.strictEqual(body.pendingApproval, false);
     });
     await test('deleting a store requires the correct password', async () => {
       const { status } = await call(`${sub}.localhost`, '/api/admin/store', { method: 'DELETE', headers: { Authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ password: 'totally-wrong' }) });
