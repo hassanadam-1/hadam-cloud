@@ -475,6 +475,58 @@ async function activate(req, res, body) {
   sendJson(res, 200, Object.assign({ ok: true, notes }, out));
 }
 
+// Check (without changing anything) whether a store can move to a given status. Mirrors
+// checkStore()'s shape above, but for the suspend/delete direction instead of activate.
+// Not restricted to only-from-active on purpose (same flexibility checkStore() has for
+// activate) -- the UI only ever calls this when a store is active, but the route itself
+// just guards against a no-op (already in that status), same as checkStore() does.
+async function checkStoreForStatusChange(id, targetStatus) {
+  const { data: t, error } = await admin().from('tenants').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  if (!t) return { error: 'store_not_found', code: 404 };
+  if (t.status === targetStatus) return { error: 'store_already_' + targetStatus, code: 409, detail: 'Store is already ' + targetStatus + '.' };
+  return { t };
+}
+async function suspendStore(t) {
+  const { data, error } = await admin().from('tenants').update({ status: 'suspended' }).eq('id', t.id).eq('status', t.status).select('*').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('store changed while suspending — reload and try again');
+  return data;
+}
+async function deleteStoreRow(t, deletedByUserId) {
+  const patch = { status: 'deleted' };
+  if ('deleted_at' in t) patch.deleted_at = new Date().toISOString();
+  if ('deleted_by' in t) patch.deleted_by = deletedByUserId;
+  const { data, error } = await admin().from('tenants').update(patch).eq('id', t.id).eq('status', t.status).select('*').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('store changed while deleting — reload and try again');
+  return data;
+}
+
+// POST /api/sa-stores/suspend  { tenant_id }
+async function suspend(req, res, body) {
+  if (!body.tenant_id) return sendJson(res, 400, { error: 'store_missing' });
+  const s = await checkStoreForStatusChange(body.tenant_id, 'suspended');
+  if (s.error) return sendJson(res, s.code, { error: s.error, detail: s.detail });
+  const t = await suspendStore(s.t);
+  await audit(req.saUser, 'store_suspended', { tenant_id: t.id, subdomain: s.t.subdomain || null, from: s.t.status, to: t.status });
+  console.log('[superadmin-stores] ' + req.saUser.email + ' suspended store ' + t.id + ' (' + (s.t.subdomain || '') + ') from ' + s.t.status);
+  sendJson(res, 200, { ok: true, store: { id: t.id, status: t.status } });
+}
+
+// POST /api/sa-stores/delete  { tenant_id }  -- soft delete only: status='deleted' plus
+// deleted_at/deleted_by, the same fields activateStore() already clears on reactivation,
+// so this stays reversible via the existing Activate store button. No hard delete.
+async function removeStore(req, res, body) {
+  if (!body.tenant_id) return sendJson(res, 400, { error: 'store_missing' });
+  const s = await checkStoreForStatusChange(body.tenant_id, 'deleted');
+  if (s.error) return sendJson(res, s.code, { error: s.error, detail: s.detail });
+  const t = await deleteStoreRow(s.t, req.saUser.id);
+  await audit(req.saUser, 'store_deleted', { tenant_id: t.id, subdomain: s.t.subdomain || null, from: s.t.status, to: t.status });
+  console.log('[superadmin-stores] ' + req.saUser.email + ' deleted store ' + t.id + ' (' + (s.t.subdomain || '') + ') from ' + s.t.status);
+  sendJson(res, 200, { ok: true, store: { id: t.id, status: t.status } });
+}
+
 /**
  * Plain Node http handler. Returns true if it handled the request, false otherwise.
  * In server.js, first line inside http.createServer(async (req, res) => { ... }):
@@ -516,6 +568,16 @@ async function handle(req, res) {
     if (req.method === 'POST' && url === '/api/sa-stores/activate') {
       const body = await readJsonBody(req);
       if (await checkSuperadmin(req, res)) await activate(req, res, body);
+      return true;
+    }
+    if (req.method === 'POST' && url === '/api/sa-stores/suspend') {
+      const body = await readJsonBody(req);
+      if (await checkSuperadmin(req, res)) await suspend(req, res, body);
+      return true;
+    }
+    if (req.method === 'POST' && url === '/api/sa-stores/delete') {
+      const body = await readJsonBody(req);
+      if (await checkSuperadmin(req, res)) await removeStore(req, res, body);
       return true;
     }
     const m = url.match(/^\/api\/sa-stores\/tenants\/([^/]+)\/restore$/);

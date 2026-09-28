@@ -211,6 +211,10 @@
       if (cs) btns.push('<button class="restore" data-what="store"' + data + '>Activate store</button>');
       if (cm) btns.push('<button class="restore" data-what="marketplace"' + data + '>Activate marketplace</button>');
       if (cs && cm) btns.push('<button class="restore both" data-what="both"' + data + '>Activate both</button>');
+      if (x.kind === 'store' && x.status === 'active') {
+        btns.push('<button class="restore suspend" data-status="suspended"' + data + '>Suspend store</button>');
+        btns.push('<button class="restore delete" data-status="deleted"' + data + '>Delete store</button>');
+      }
       if (x.directory && x.directory.expired) btns.push('<div class="small">Subscription ended ' + esc(fmtDate(x.directory.expiry)) + ' — renew to list it</div>');
       else if (m && m.status !== 'active' && !memberFixable(m) && x.kind === 'member') btns.push('<div class="small">' + (featuredLapsed(m)
         ? 'Marketplace: Featured period ended — use Renew'
@@ -244,6 +248,29 @@
       btn.disabled = false; btn.textContent = label;
       $('appMsg').className = 'msg err';
       $('appMsg').textContent = 'Activation failed: ' + (e.detail || e.message);
+    }
+  }
+
+  var STATUS_CHANGE_LABEL = { suspended: 'Suspend', deleted: 'Delete' };
+  async function changeStatus(btn) {
+    var name = btn.getAttribute('data-name'), status = btn.getAttribute('data-status');
+    var endpoint = status === 'suspended' ? '/api/sa-stores/suspend' : '/api/sa-stores/delete';
+    var confirmMsg = STATUS_CHANGE_LABEL[status] + ' the store "' + name + '"?' + (status === 'deleted' ? ' This is reversible \u2014 use Activate store to restore it.' : '');
+    if (!confirm(confirmMsg)) return;
+    var label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Working\u2026';
+    try {
+      var r = await api(endpoint, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenant_id: btn.getAttribute('data-tid') }),
+      });
+      $('appMsg').className = 'msg ok';
+      $('appMsg').textContent = '"' + name + '": store ' + (r.store ? r.store.status : status) + '.';
+      await load(true);
+    } catch (e) {
+      btn.disabled = false; btn.textContent = label;
+      $('appMsg').className = 'msg err';
+      $('appMsg').textContent = STATUS_CHANGE_LABEL[status] + ' failed: ' + (e.detail || e.message);
     }
   }
 
@@ -297,7 +324,8 @@
       render();
     });
     $('rows').addEventListener('click', function (ev) {
-      var b = ev.target.closest('button.restore'); if (b) restore(b);
+      var b = ev.target.closest('button.restore'); if (!b) return;
+      if (b.hasAttribute('data-status')) changeStatus(b); else restore(b);
     });
   }
 

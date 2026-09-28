@@ -52,6 +52,8 @@
   button.restore:hover:not(:disabled) { filter:brightness(1.25); }
   button.restore.both { background:var(--amber); color:var(--navy); font-weight:600; }
   button.restore:disabled { opacity:.5; }
+  button.restore.suspend { background:transparent; color:var(--amber); border-color:var(--amber); }
+  button.restore.delete { background:transparent; color:var(--red); border-color:var(--red); }
   td.acts { min-width:170px; }
   .badge.expired, .badge.rejected { background:rgba(255,107,107,.15); color:var(--red); }
   .badge.approved { background:rgba(52,211,153,.15); color:var(--green); }
