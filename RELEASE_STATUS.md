@@ -157,13 +157,6 @@ platform commission from either Stripe or PayPal.
 
 ### Remaining design/research items (not yet resolved)
 
-- Authoritative commission-rate source across drivers: needs one
-  final precise confirmation (Supabase driver appears to read
-  sub.plans.commission_rate from a real joined table, falling back to
-  the hardcoded SUBSCRIPTION_TIERS.starter constant when no
-  subscription exists; local/non-Supabase driver has no plans table
-  and indexes the hardcoded SUBSCRIPTION_TIERS object directly --
-  confirm precisely before building on top of either).
 - Refund / partial-refund / mid-flight rate-change handling: not
   implemented anywhere; full design required once collection exists.
 - Historical orders once collection goes live: policy decision
@@ -176,3 +169,33 @@ platform commission from either Stripe or PayPal.
   atomic-claim pattern and Stripe/PayPal event-id dedup machinery
   already proven for payment status -- do not invent new idempotency
   handling for commission.
+
+---
+
+## Update — 2026-09-29: commission-rate source, confirmed precisely
+
+On the Supabase driver (production), commission_rate is NOT a fixed
+constant -- it is a genuinely dynamic, database-backed column on the
+real `plans` table (schema in db/schema.sql), editable live by a
+Superadmin through a real admin endpoint (validatePlanInput accepts
+commission_rate, monthly_price, yearly_price, max_products,
+max_storage_mb, staff_accounts, marketplace_allowed, active -- all
+written directly to that table, "deliberately does not introduce any
+second/parallel pricing schema" per the function's own comment). The
+hardcoded SUBSCRIPTION_TIERS constant in server.js is only ever a
+fallback for a tenant with no subscription row yet; any tenant with
+an actual subscription gets its rate from the database, which can be
+changed by a Superadmin at any time without a deploy.
+
+On the local/non-Supabase driver, there is no plans table at all --
+SUBSCRIPTION_TIERS is the only source, fixed to three tiers, editable
+only by changing code and redeploying.
+
+Consequence for design item #5 above (mid-flight rate changes): this
+is not a hypothetical edge case. A Superadmin changing a plan's
+commission_rate while orders are in flight is a normal, reachable
+admin action on the driver that runs in production. Any real
+collection design must snapshot the applicable rate at charge time
+(store it on the payment/order record itself) rather than re-deriving
+it later from the plan, or refund-time commission accounting will be
+inconsistent with what was actually charged.
