@@ -127,3 +127,52 @@ including the free starter tier.
 8. Testing -- Stripe test mode: success, decline, abandoned checkout,
    duplicate webhook, refund, expiry, renewal, AND commission
    collection/reconciliation scenarios.
+
+---
+
+## Update — 2026-09-29: commission collection -- confirmed gap (source-level audit)
+
+Source-level audit confirms that Hadam currently collects no per-sale
+platform commission from either Stripe or PayPal.
+
+- Stripe destination charges (lib/stripeConnect.js createPaymentIntent)
+  do not specify application_fee_amount -- only amount, currency, and
+  transfer_data.destination are set.
+- PayPal order creation (lib/paypalConnect.js createOrder) does not
+  specify payment_instruction.platform_fees -- only amount and
+  payee.merchant_id are set.
+- Existing commissionOwed / sellerKeeps calculations (in
+  /api/admin/stats and /api/admin/reports) are reporting-only and do
+  not create a receivable, deduction, invoice, transfer, or other
+  collection mechanism.
+- Therefore tenants currently retain the full sale amount regardless
+  of their configured commission rate, on every tier, via either
+  payment provider.
+- Marketplace sales use the identical payment path as regular store
+  sales (same two createPaymentIntent call sites; no separate
+  marketplace-specific routing) -- confirmed via grep, no special
+  case to account for.
+- Real commission collection remains part of the Real Platform
+  Billing blocker above, not a separate issue.
+
+### Remaining design/research items (not yet resolved)
+
+- Authoritative commission-rate source across drivers: needs one
+  final precise confirmation (Supabase driver appears to read
+  sub.plans.commission_rate from a real joined table, falling back to
+  the hardcoded SUBSCRIPTION_TIERS.starter constant when no
+  subscription exists; local/non-Supabase driver has no plans table
+  and indexes the hardcoded SUBSCRIPTION_TIERS object directly --
+  confirm precisely before building on top of either).
+- Refund / partial-refund / mid-flight rate-change handling: not
+  implemented anywhere; full design required once collection exists.
+- Historical orders once collection goes live: policy decision
+  required (retroactive vs. forward-only).
+- Stripe's Connect fee mechanics for destination charges +
+  application_fee_amount (where Stripe's own processing fee gets
+  deducted from): documentation research required, not a code
+  question.
+- Idempotency: reuse the existing tryClaimPaymentTransition
+  atomic-claim pattern and Stripe/PayPal event-id dedup machinery
+  already proven for payment status -- do not invent new idempotency
+  handling for commission.
